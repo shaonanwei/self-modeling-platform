@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.selfmodeling.mapper.ModelInfoMapper">
+
+    <resultMap id="BaseResultMap" type="com.selfmodeling.entity.ModelInfo">
+        <id column="id" property="id"/>
+        <result column="model_code" property="modelCode"/>
+        <result column="model_name" property="modelName"/>
+        <result column="model_desc" property="modelDesc"/>
+        <result column="model_type" property="modelType"/>
+        <result column="data_source" property="dataSource"/>
+        <result column="status" property="status"/>
+        <result column="version" property="version"/>
+        <result column="creator" property="creator"/>
+        <result column="create_time" property="createTime"/>
+        <result column="updater" property="updater"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, model_code, model_name, model_desc, model_type, data_source,
+        status, version, creator, create_time, updater, update_time, deleted
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM model_info
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM model_info
+        WHERE deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectIdByCode" resultType="java.lang.Long">
+        SELECT id
+        FROM model_info
+        WHERE model_code = #{modelCode}
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO model_info (
+            model_code, model_name, model_desc, model_type, data_source,
+            status, version, creator, updater, deleted
+        ) VALUES (
+            #{modelCode}, #{modelName}, #{modelDesc}, #{modelType}, #{dataSource},
+            #{status}, 1, #{creator}, #{updater}, 0
+        )
+    </insert>
+
+    <update id="updateById">
+        UPDATE model_info
+        SET model_code = #{modelCode},
+            model_name = #{modelName},
+            model_desc = #{modelDesc},
+            model_type = #{modelType},
+            data_source = #{dataSource},
+            status = #{status},
+            version = #{version},
+            updater = #{updater},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="deleteById">
+        UPDATE model_info
+        SET deleted = 1,
+            updater = #{updater},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateCodeById">
+        UPDATE model_info
+        SET model_code = #{modelCode},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

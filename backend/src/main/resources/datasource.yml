@@ -1,0 +1,70 @@
+# 动态数据源配置
+spring:
+  datasource:
+    dynamic:
+      strict: true
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://localhost:3306/test
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          username: rebuild
+          password: Admin@2026
+          type: com.alibaba.druid.pool.DruidDataSource
+          druid:
+            initial-size: 5
+            min-idle: 5
+            max-active: 20
+            max-wait: 60000
+            time-between-eviction-runs-millis: 60000
+            min-evictable-idle-time-millis: 300000
+            validation-query: SELECT 1
+            test-while-idle: true
+            test-on-borrow: false
+            test-on-return: false
+            pool-prepared-statements: true
+            max-pool-prepared-statement-per-connection-size: 20
+            filters: stat,wall
+            connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000
+        postgres:
+          url: jdbc:postgresql://localhost:5432/test?currentSchema=public
+          driver-class-name: org.postgresql.Driver
+          username: cplcower
+          password: 123456
+          hikari:
+            maximum-pool-size: 5
+            minimum-idle: 1
+            connection-timeout: 60000
+            idle-timeout: 300000
+            max-lifetime: 1800000
+            connection-test-query: SELECT 1
+        # hive:
+        #   url: jdbc:hive2://localhost:10000/default
+        #   driver-class-name: org.apache.hive.jdbc.HiveDriver
+        #   username: hive
+        #   password: ""
+        #   hikari:
+        #     maximum-pool-size: 5
+        #     minimum-idle: 2
+        #     connection-timeout: 60000
+        #     idle-timeout: 300000
+        #     max-lifetime: 1800000
+        sqlite:
+          url: jdbc:sqlite:selfmodeling.db
+          driver-class-name: org.sqlite.JDBC
+          type: com.alibaba.druid.pool.DruidDataSource
+          druid:
+            initial-size: 5
+            min-idle: 5
+            max-active: 20
+            max-wait: 60000
+            time-between-eviction-runs-millis: 60000
+            min-evictable-idle-time-millis: 300000
+            validation-query: SELECT 1
+            test-while-idle: true
+            test-on-borrow: false
+            test-on-return: false
+            pool-prepared-statements: true
+            max-pool-prepared-statement-per-connection-size: 20
+            filters: stat,wall
+            connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000

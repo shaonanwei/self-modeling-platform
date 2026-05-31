@@ -1,0 +1,41 @@
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# Logs
+logs/
+*.log
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Env
+.env
+.env.local
+.env.*.local

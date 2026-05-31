@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.selfmodeling.mapper.ModelStepMapper">
+
+    <resultMap id="BaseResultMap" type="com.selfmodeling.entity.ModelStep">
+        <id column="id" property="id"/>
+        <result column="model_id" property="modelId"/>
+        <result column="step_code" property="stepCode"/>
+        <result column="step_name" property="stepName"/>
+        <result column="step_desc" property="stepDesc"/>
+        <result column="step_type" property="stepType"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="step_config" property="stepConfig"/>
+        <result column="sql_statement" property="sqlStatement"/>
+        <result column="result_table_name" property="resultTableName"/>
+        <result column="execute_status" property="executeStatus"/>
+        <result column="execute_start_time" property="executeStartTime"/>
+        <result column="execute_end_time" property="executeEndTime"/>
+        <result column="execute_log" property="executeLog"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, model_id, step_code, step_name, step_desc, step_type, sort_order,
+        step_config, sql_statement,
+        result_table_name, execute_status, execute_start_time, execute_end_time, execute_log,
+        create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM model_step
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByModelId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM model_step
+        WHERE model_id = #{modelId}
+        ORDER BY sort_order
+    </select>
+
+    <select id="selectIdByCode" resultType="java.lang.Long">
+        SELECT id
+        FROM model_step
+        WHERE step_code = #{stepCode}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO model_step (
+            model_id, step_code, step_name, step_desc, step_type, sort_order,
+            step_config, sql_statement
+        ) VALUES (
+            #{modelId}, #{stepCode}, #{stepName}, #{stepDesc}, #{stepType}, #{sortOrder},
+            #{stepConfig}, #{sqlStatement}
+        )
+    </insert>
+
+    <update id="updateById">
+        UPDATE model_step
+        SET step_name = #{stepName},
+            step_type = #{stepType},
+            step_desc = #{stepDesc},
+            step_config = #{stepConfig},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM model_step
+        WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByModelId">
+        DELETE FROM model_step
+        WHERE model_id = #{modelId}
+    </delete>
+
+    <update id="updateStepById">
+        UPDATE model_step
+        SET step_name = #{stepName},
+            step_type = #{stepType},
+            step_desc = #{stepDesc},
+            step_config = #{stepConfig},
+            sql_statement = #{sqlStatement},
+            execute_status = 'pending',
+            update_time = NOW()
+        WHERE id = #{stepId}
+    </update>
+
+    <update id="updateSortOrderById">
+        UPDATE model_step
+        SET sort_order = #{sortOrder},
+            update_time = NOW()
+        WHERE id = #{stepId}
+    </update>
+
+    <update id="updateExecuteResult">
+        UPDATE model_step
+        SET result_table_name = #{resultTableName},
+            execute_status = #{executeStatus},
+            execute_start_time = #{executeStartTime},
+            execute_end_time = #{executeEndTime},
+            update_time = NOW()
+        WHERE id = #{stepId}
+    </update>
+
+    <update id="updateExecuteStart">
+        UPDATE model_step
+        SET execute_status = 'running',
+            execute_start_time = #{executeStartTime},
+            execute_end_time = NULL,
+            execute_log = NULL,
+            update_time = NOW()
+        WHERE id = #{stepId}
+    </update>
+
+    <update id="updateExecuteEnd">
+        UPDATE model_step
+        SET result_table_name = #{resultTableName},
+            execute_status = #{executeStatus},
+            execute_end_time = #{executeEndTime},
+            execute_log = #{executeLog},
+            update_time = NOW()
+        WHERE id = #{stepId}
+    </update>
+
+</mapper>
