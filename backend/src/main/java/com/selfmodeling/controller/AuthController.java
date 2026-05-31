@@ -62,15 +62,15 @@ public class AuthController {
      */
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpSession session) {
-        //String storedCode = (String) session.getAttribute("captcha:" + request.getCaptchaKey());
+        String storedCode = (String) session.getAttribute("captcha:" + request.getCaptchaKey());
         session.removeAttribute("captcha:" + request.getCaptchaKey());
 
-        // if (storedCode == null) {
-        //     return Result.error(400, "验证码已过期，请刷新验证码");
-        // }
-        // if (!storedCode.equalsIgnoreCase(request.getCaptchaCode())) {
-        //     return Result.error(400, "验证码错误");
-        // }
+        if (storedCode == null) {
+            return Result.error(400, "验证码已过期，请刷新验证码");
+        }
+        if (!storedCode.equalsIgnoreCase(request.getCaptchaCode())) {
+            return Result.error(400, "验证码错误");
+        }
 
         LoginResponse response = authService.login(request);
         return Result.success("登录成功", response);
