@@ -22,7 +22,7 @@ public interface SqlService {
     /**
      * 测试执行 SQL 查询（只读，限行）
      * @param sql SQL 查询语句
-     * @param limit 返回行数限制（最大100）
+     * @param limit 返回行数限制（最大 1000）
      * @param dataSourceId 数据源ID
      * @return 查询结果：{columns: string[], rows: List<Map>, total: long}
      */

@@ -35,7 +35,7 @@ public class SqlController {
     }
 
     /**
-     * 测试执行 SQL 查询（只读，限100行）
+     * 测试执行 SQL 查询（只读，默认 50 行、最大 1000 行）
      * @param requestBody 包含 sql、limit 和 dataSourceId
      * @return 查询结果 {columns, rows, total}
      */
