@@ -191,6 +191,7 @@ import {
 } from '@element-plus/icons-vue'
 import type { ModelStep, InsertStepRequest } from '@/types/model'
 import { modelApi } from '@/api/modelApi'
+import { sqlApi } from '@/api/sqlApi'
 import QueryEditor from '@/components/queryEditor/QueryEditor.vue'
 
 const props = defineProps<{
@@ -263,7 +264,7 @@ function fillForm(step: ModelStep) {
 
   try {
     const config = JSON.parse(step.stepConfig || '{}')
-    sqlConfig.sqlStatement = config.sqlStatement || ''
+    sqlConfig.sqlStatement = step.sqlStatement || config.sqlStatement || ''
     currentQueryConfig = config.queryConfig || null
   } catch {
     sqlConfig.sqlStatement = ''
@@ -397,6 +398,12 @@ const handleSubmit = async () => {
   try {
     const finalSql = queryEditorRef.value?.getSql() || sqlConfig.sqlStatement
     const finalConfig = queryEditorRef.value?.getConfig() || currentQueryConfig
+
+    const sqlValidation = await sqlApi.validate(finalSql, modelDataSource.value)
+    if (!sqlValidation.data.valid) {
+      ElMessage.error('SQL 校验失败: ' + (sqlValidation.data.message || '仅支持单条只读 SELECT'))
+      return
+    }
 
     const stepConfigObj = {
       configType: 'SQL' as const,

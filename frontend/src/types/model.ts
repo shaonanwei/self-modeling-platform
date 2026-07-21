@@ -38,6 +38,7 @@ export interface ModelStep {
   stepType: 'start' | 'end' | 'task' | 'gateway' | 'subprocess'
   sortOrder: number
   stepConfig: string
+  sqlStatement?: string
   resultTableName?: string
   executeStatus?: string
   executeStartTime?: string

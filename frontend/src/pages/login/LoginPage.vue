@@ -140,8 +140,10 @@ const refreshCaptcha = async () => {
 }
 
 const handleLogin = async () => {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+
   try {
-    await formRef.value?.validate()
     loading.value = true
 
     await authStore.login(
