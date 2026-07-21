@@ -54,6 +54,6 @@ CREATE TABLE IF NOT EXISTS model_step (
     INDEX idx_model_step_model_id (model_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型步骤表';
 
--- 初始化默认用户 (用户名: admin, 密码: admin123)
+-- 仅用于本地开发的默认用户 (用户名: admin, 初始密码: admin123，数据库中仅保存 BCrypt 哈希)
 INSERT IGNORE INTO sys_user (id, username, password, nickname, status, creator)
-VALUES (1, 'admin', 'admin123', '管理员', 1, 'system');
+VALUES (1, 'admin', '$2a$10$WDGGTRXM3dkEaJH.q99DwuFVmOx4n7UjdRXq2/2X/Ue../h1hwzvm', '管理员', 1, 'system');
