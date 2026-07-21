@@ -259,15 +259,33 @@ $env:POSTGRES_PASSWORD = $postgresCredential.GetNetworkCredential().Password
 & 'D:\apache-maven\bin\mvn.cmd' spring-boot:run
 ```
 
-- [ ] **步骤 6：轮换曾出现在 Git 历史中的数据库凭证**
+- [ ] **步骤 6：记录延期的数据库凭证轮换风险**
 
-使用 MySQL 和 PostgreSQL 管理工具为两个应用账户设置新密码；只更新本地环境变量或 `backend/config/datasource-local.yml`，随后验证旧凭证已无法连接。不得将新旧密码写入仓库、提交消息、终端记录或问题描述。
+本轮不执行凭证轮换。将“曾出现在 Git 历史中的数据库凭证尚未轮换”记录为明确的发布阻断风险；生产部署前仍须使用 MySQL 和 PostgreSQL 管理工具为两个应用账户设置新密码，只更新本地环境变量或 `backend/config/datasource-local.yml`，并验证旧凭证已无法连接。不得将新旧密码写入仓库、提交消息、终端记录或问题描述。
 
 - [ ] **步骤 7：重新执行禁用日志扫描并打包后端**
 
 ```powershell
-$matches = rg -n 'password:\s*\[|storedPassword|request\.getPassword\(\).*log|password:\s*[^$]' backend/src/main backend/config
-if ($matches) { $matches; exit 1 }
+$authLogMatches = rg -n 'log\.[^(]+\([^\r\n]*(getPassword\(|rawPassword|storedPassword)' backend/src/main
+if ($authLogMatches) { $authLogMatches; exit 1 }
+
+$unsafeYamlCredentials = Get-ChildItem `
+    backend/src/main/resources/datasource.yml, `
+    backend/config/datasource-local.example.yml |
+    ForEach-Object {
+        $file = $_.FullName
+        $lineNumber = 0
+        Get-Content -Encoding utf8 $file | ForEach-Object {
+            $lineNumber++
+            if ($_ -notmatch '^\s*#' -and
+                $_ -match '^\s*(username|password):\s*(.+)$' -and
+                $Matches[2] -notmatch '^\$\{') {
+                "$(Split-Path $file -Leaf):$lineNumber"
+            }
+        }
+    }
+if ($unsafeYamlCredentials) { $unsafeYamlCredentials; exit 1 }
+
 & 'D:\apache-maven\bin\mvn.cmd' -s '..\..\.maven-settings.xml' -DskipTests package
 ```
 
@@ -730,5 +748,5 @@ git commit -m "docs: add security release gate"
 ## 自审结果
 
 - 规格覆盖：认证、凭证治理、CORS、SQL 安全、测试、打包和运行时验证均已分配到具体任务。
-- 占位符检查：不存在延后实现的占位内容；运行凭证值按设计保留在 Git 之外。
+- 延期项检查：数据库凭证轮换是唯一明确延期的高风险事项；完成轮换前不得宣称 P0 安全工作全部关闭。运行凭证值按设计保留在 Git 之外。
 - 类型一致性：`ReadOnlySqlGuard.validate(String)` 和 `CorsProperties.allowedOrigins()` 均只定义一次，并以相同签名被调用。

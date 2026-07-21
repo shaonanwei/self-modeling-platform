@@ -262,6 +262,30 @@ self-modeling-platform/
 - 活跃超时：30 分钟无操作自动过期
 - 支持多端同时登录
 
+## 安全发布门禁
+
+每次准备发布时，先在 `backend` 目录执行完整测试和打包；任何命令失败都应阻止发布：
+
+```powershell
+mvn test
+mvn package
+```
+
+使用本地环境变量启动后端后，逐项完成以下 API 冒烟检查：
+
+- [ ] 无令牌请求 `GET /api/v1/auth/captcha` 返回 HTTP 200 和 JSON。
+- [ ] 无令牌请求 `POST /api/v1/sql/execute` 返回 HTTP 401。
+- [ ] 无令牌请求 `GET /api/v1/metadata/datasources` 返回 HTTP 401。
+- [ ] 使用有效账号和验证码请求 `POST /api/v1/auth/login`，业务码为 200，且日志不含密码或密码哈希。
+- [ ] 使用有效令牌请求 `POST /api/v1/sql/execute` 执行 `SELECT 1`，业务码为 200。
+- [ ] 使用有效令牌提交修改型或堆叠 SQL，返回业务错误且语句未执行。
+- [ ] 从允许的前端 Origin 发起预检请求时返回精确的 `Access-Control-Allow-Origin`；未知 Origin 不返回该响应头。
+- [ ] 秘密扫描未发现受跟踪的数据库密码、认证密码日志或密码哈希日志。
+
+生产环境必须显式配置 `app.cors.allowed-origins`，不得将带凭证的 CORS 配置为通配来源。执行用户 SQL 的数据库账号必须是最小权限只读账号，不得使用数据库所有者或管理员账号。
+
+当前状态为“P0 代码加固完成，数据库凭证轮换未完成”。曾进入 Git 历史的数据库凭证在完成轮换并确认旧凭证失效前，仍属于发布阻断风险，不能将 P0 安全工作标记为全部关闭。
+
 ## License
 
 MIT
