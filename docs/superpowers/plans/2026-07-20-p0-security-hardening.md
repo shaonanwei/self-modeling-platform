@@ -4,7 +4,9 @@
 
 **目标：** 在继续功能开发或重构之前，消除当前暴露的认证、凭证、CORS 和任意查询风险。
 
-**架构方案：** 保持 Sa-Token 作为唯一的 HTTP 认证边界；将环境秘密移出 Git 跟踪的资源；使用可配置的白名单替代通配 CORS；在每条查询校验和执行路径之前设置纯 SQL 防护器。通过有针对性的单元测试和 MVC 切片测试锁定安全行为，防止后续重构在无意中重新开放访问。
+**架构方案：** 保持 Sa-Token 作为唯一的 HTTP 认证边界；将环境秘密移出 Git 跟踪的资源；生产环境由 Nginx 同域提供前端并代理 `/api`，后端不再提供浏览器 CORS；在每条查询校验和执行路径之前设置纯 SQL 防护器。通过有针对性的单元测试和 MVC 切片测试锁定安全行为，防止后续重构在无意中重新开放访问。
+
+> **2026-07-21 决策更新：** MySQL 和 PostgreSQL 当前均为本地测试账号，不执行密码轮换，也不再把轮换列为本地 P0 阻断项；生产环境必须使用隔离的最小权限账号。任务 3 的后端 CORS 白名单方案已由 Nginx 同域代理取代，原步骤仅保留为历史实施记录。
 
 **技术栈：** Java 21、Spring Boot 4.0.6、Spring MVC Test、Sa-Token 1.45.0、JSqlParser 4.9、JUnit 5、Mockito、Maven 3.9.11。
 
@@ -259,9 +261,9 @@ $env:POSTGRES_PASSWORD = $postgresCredential.GetNetworkCredential().Password
 & 'D:\apache-maven\bin\mvn.cmd' spring-boot:run
 ```
 
-- [ ] **步骤 6：记录延期的数据库凭证轮换风险**
+- [ ] **步骤 6：记录测试与生产凭证边界**
 
-本轮不执行凭证轮换。将“曾出现在 Git 历史中的数据库凭证尚未轮换”记录为明确的发布阻断风险；生产部署前仍须使用 MySQL 和 PostgreSQL 管理工具为两个应用账户设置新密码，只更新本地环境变量或 `backend/config/datasource-local.yml`，并验证旧凭证已无法连接。不得将新旧密码写入仓库、提交消息、终端记录或问题描述。
+本轮不执行凭证轮换：现有 MySQL 和 PostgreSQL 账号仅用于本地测试，不作为发布阻断项。生产环境不得复用这些账号，必须创建隔离的最小权限应用账号，并只通过环境变量或未受 Git 跟踪的本地配置提供凭证。不得将密码写入仓库、提交消息、终端记录或问题描述。
 
 - [ ] **步骤 7：重新执行禁用日志扫描并打包后端**
 
@@ -301,6 +303,8 @@ git commit -m "security: remove secrets from source and logs"
 ---
 
 ### 任务 3：使用白名单替代带凭证的通配 CORS
+
+> 本任务已由 2026-07-21 的 Nginx 同域代理决策取代：删除后端 CORS 配置和测试，开发环境使用 Vite `/api` 代理，生产环境使用 Nginx `/api` 代理。以下内容仅保留为历史记录，不再执行。
 
 **文件：**
 - 创建：`backend/src/main/java/com/selfmodeling/config/CorsProperties.java`
@@ -748,5 +752,5 @@ git commit -m "docs: add security release gate"
 ## 自审结果
 
 - 规格覆盖：认证、凭证治理、CORS、SQL 安全、测试、打包和运行时验证均已分配到具体任务。
-- 延期项检查：数据库凭证轮换是唯一明确延期的高风险事项；完成轮换前不得宣称 P0 安全工作全部关闭。运行凭证值按设计保留在 Git 之外。
-- 类型一致性：`ReadOnlySqlGuard.validate(String)` 和 `CorsProperties.allowedOrigins()` 均只定义一次，并以相同签名被调用。
+- 凭证边界检查：本地测试账号不要求轮换；生产环境必须使用隔离的最小权限账号。运行凭证值按设计保留在 Git 之外。
+- 类型一致性：`ReadOnlySqlGuard.validate(String)` 只定义一次，并以相同签名被调用；后端 CORS 类型已由 Nginx 同域代理方案取代。
