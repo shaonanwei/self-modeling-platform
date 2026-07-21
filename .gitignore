@@ -24,6 +24,7 @@ logs/
 .mvn/
 mvnw
 mvnw.cmd
+backend/effective-pom
 
 # Node
 node_modules/
