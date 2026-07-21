@@ -6,10 +6,10 @@ spring:
       primary: master
       datasource:
         master:
-          url: jdbc:mysql://localhost:3306/test
+          url: ${MYSQL_URL:jdbc:mysql://localhost:3306/test}
           driver-class-name: com.mysql.cj.jdbc.Driver
-          username: rebuild
-          password: Admin@2026
+          username: ${MYSQL_USERNAME:}
+          password: ${MYSQL_PASSWORD:}
           type: com.alibaba.druid.pool.DruidDataSource
           druid:
             initial-size: 5
@@ -27,10 +27,10 @@ spring:
             filters: stat,wall
             connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000
         postgres:
-          url: jdbc:postgresql://localhost:5432/test?currentSchema=public
+          url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/test?currentSchema=public}
           driver-class-name: org.postgresql.Driver
-          username: cplcower
-          password: 123456
+          username: ${POSTGRES_USERNAME:}
+          password: ${POSTGRES_PASSWORD:}
           hikari:
             maximum-pool-size: 5
             minimum-idle: 1

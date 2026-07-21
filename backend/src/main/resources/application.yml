@@ -3,7 +3,9 @@ server:
 
 spring:
   config:
-    import: optional:datasource.yml
+    import:
+      - optional:classpath:datasource.yml
+      - optional:file:./config/datasource-local.yml
   sql:
     init:
       mode: never

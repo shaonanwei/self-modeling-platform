@@ -33,23 +33,28 @@ mysql -u root -p self_modeling < backend/src/main/resources/schema-mysql.sql
 
 ### 2. 后端配置
 
-修改 `backend/src/main/resources/datasource.yml`：
+不要把数据库账号或密码写入受 Git 跟踪的配置。建议在启动后端的同一个 PowerShell 终端中，通过环境变量提供本地应用账号：
 
-```yaml
-spring:
-  datasource:
-    dynamic:
-      datasource:
-        master:
-          url: jdbc:mysql://localhost:3306/self_modeling
-          username: root
-          password: your_password
+```powershell
+$mysqlCredential = Get-Credential -Message 'Local MySQL application account'
+$postgresCredential = Get-Credential -Message 'Local PostgreSQL application account'
+
+$env:MYSQL_URL = 'jdbc:mysql://localhost:3306/self_modeling'
+$env:MYSQL_USERNAME = $mysqlCredential.UserName
+$env:MYSQL_PASSWORD = $mysqlCredential.GetNetworkCredential().Password
+$env:POSTGRES_URL = 'jdbc:postgresql://localhost:5432/test?currentSchema=public'
+$env:POSTGRES_USERNAME = $postgresCredential.UserName
+$env:POSTGRES_PASSWORD = $postgresCredential.GetNetworkCredential().Password
 ```
+
+也可以复制 `backend/config/datasource-local.example.yml` 为 `backend/config/datasource-local.yml`，再仅在本机填写配置。该本地文件已被 Git 忽略，不得提交。数据库账号应使用最小权限的应用账号，不要使用数据库所有者或管理员账号执行用户 SQL。
+
+曾经写入仓库或 Git 历史的数据库凭证必须单独轮换。当前代码加固不会自动完成凭证轮换，生产部署前仍需确认旧凭证已经失效。
 
 ### 3. 启动后端
 
-```bash
-cd backend
+```powershell
+Set-Location backend
 mvn spring-boot:run
 ```
 
@@ -69,6 +74,102 @@ npm run dev
 
 - 用户名: `admin`
 - 密码: `admin123`
+
+## Windows 前后端重启
+
+以下命令均使用 PowerShell，并从项目根目录开始执行。重启前请确保 MySQL、PostgreSQL 等外部数据库服务已经启动。
+
+### 1. 检查运行环境
+
+确认 Java、Maven、Node.js 和 npm 均已加入 `PATH`：
+
+```powershell
+java -version
+mvn -version
+node --version
+npm --version
+```
+
+其中 `java -version` 以及 `mvn -version` 中显示的 Java 版本应为 21 或更高版本。
+
+### 2. 停止旧服务
+
+优先在原来的前端和后端终端中分别按 `Ctrl+C`，等待进程退出。
+
+如果原终端已经关闭或服务在后台运行，可在项目根目录执行以下命令。脚本只会停止命令行中包含当前项目根目录的 8080/5173 监听进程；其他程序即使占用了相同端口也不会被停止。
+
+```powershell
+$projectRoot = (Resolve-Path .).Path
+$ports = 8080, 5173
+$connections = Get-NetTCPConnection -State Listen -ErrorAction Stop |
+    Where-Object { $_.LocalPort -in $ports }
+$processIds = $connections |
+    Select-Object -ExpandProperty OwningProcess -Unique
+
+foreach ($processId in $processIds) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId"
+    $belongsToProject = $process.CommandLine -and
+        $process.CommandLine.IndexOf(
+            $projectRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -ge 0
+
+    if ($belongsToProject) {
+        Stop-Process -Id $processId -Force
+        Write-Host "已停止项目进程 $processId"
+    } else {
+        Write-Warning "未停止进程 $processId：命令行不属于当前项目"
+    }
+}
+```
+
+如果查询进程时提示权限不足，请使用管理员 PowerShell 重新执行上述兜底命令。不要直接终止未经命令行归属确认的端口进程。
+
+### 3. 启动后端
+
+打开一个新的 PowerShell 终端，在项目根目录执行：
+
+```powershell
+Set-Location backend
+mvn spring-boot:run
+```
+
+日志出现 `Started SelfModelingApplication` 表示后端已经就绪，默认地址为 `http://127.0.0.1:8080`。
+
+### 4. 启动前端
+
+再打开一个新的 PowerShell 终端，在项目根目录执行：
+
+```powershell
+Set-Location frontend
+npm run dev -- --host 127.0.0.1
+```
+
+日志出现 `VITE ... ready` 表示前端已经就绪，访问地址为 `http://127.0.0.1:5173/`。正常重启不需要重复执行 `npm install`；只有首次安装或依赖发生变化时才需要重新安装依赖。
+
+### 5. 健康检查
+
+两个服务均显示就绪后，在另一个 PowerShell 终端执行：
+
+```powershell
+$frontend = Invoke-WebRequest `
+    -Uri 'http://127.0.0.1:5173/' `
+    -UseBasicParsing `
+    -TimeoutSec 15
+$backend = Invoke-WebRequest `
+    -Uri 'http://127.0.0.1:8080/api/v1/auth/captcha' `
+    -UseBasicParsing `
+    -TimeoutSec 15
+
+[pscustomobject]@{
+    FrontendStatus = $frontend.StatusCode
+    FrontendContentType = $frontend.Headers['Content-Type']
+    BackendStatus = $backend.StatusCode
+    BackendContentType = $backend.Headers['Content-Type']
+}
+```
+
+预期前端和后端的状态码均为 `200`；前端内容类型为 HTML，后端验证码接口内容类型为 JSON。
 
 ## 项目结构
 
