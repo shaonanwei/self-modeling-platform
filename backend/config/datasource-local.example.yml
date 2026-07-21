@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    dynamic:
+      datasource:
+        master:
+          username: ${MYSQL_USERNAME}
+          password: ${MYSQL_PASSWORD}
+        postgres:
+          username: ${POSTGRES_USERNAME}
+          password: ${POSTGRES_PASSWORD}

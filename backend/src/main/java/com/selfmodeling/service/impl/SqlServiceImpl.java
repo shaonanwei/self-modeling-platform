@@ -3,6 +3,7 @@ package com.selfmodeling.service.impl;
 import com.selfmodeling.dto.*;
 import com.selfmodeling.service.MetadataService;
 import com.selfmodeling.service.SqlService;
+import com.selfmodeling.service.sql.ReadOnlySqlGuard;
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.expression.operators.conditional.*;
 import net.sf.jsqlparser.expression.operators.relational.*;
@@ -44,20 +45,20 @@ public class SqlServiceImpl implements SqlService {
     @Autowired
     private MetadataService metadataService;
 
+    @Autowired
+    private ReadOnlySqlGuard readOnlySqlGuard;
+
     // ========== SQL 校验与执行 ==========
 
     @Override
     public Map<String, Object> validateSql(String sql, String dataSourceId) {
         Map<String, Object> result = new HashMap<>();
-        if (sql == null || sql.trim().isEmpty()) {
+        final String safeSql;
+        try {
+            safeSql = readOnlySqlGuard.validate(sql);
+        } catch (IllegalArgumentException e) {
             result.put("valid", false);
-            result.put("message", "SQL 语句不能为空");
-            return result;
-        }
-        String trimmedSql = sql.trim().toUpperCase();
-        if (isDangerousOperation(trimmedSql)) {
-            result.put("valid", false);
-            result.put("message", "不支持数据修改操作，仅允许 SELECT 查询");
+            result.put("message", e.getMessage());
             return result;
         }
         try {
@@ -74,19 +75,22 @@ public class SqlServiceImpl implements SqlService {
                 result.put("message", "数据源配置异常，无法获取数据库连接");
                 return result;
             }
-            try (Connection conn = dataSource.getConnection();
-                 java.sql.Statement stmt = conn.createStatement()) {
-                String dbProductName = conn.getMetaData().getDatabaseProductName().toLowerCase();
-                String explainSql;
-                if (dbProductName.contains("sqlite")) {
-                    explainSql = "EXPLAIN QUERY PLAN " + sql;
-                } else {
-                    // MySQL, PostgreSQL 等使用 EXPLAIN
-                    explainSql = "EXPLAIN " + sql;
+            try (Connection conn = dataSource.getConnection()) {
+                conn.setReadOnly(true);
+                try (java.sql.Statement stmt = conn.createStatement()) {
+                    stmt.setQueryTimeout(60);
+                    String dbProductName = conn.getMetaData().getDatabaseProductName().toLowerCase();
+                    String explainSql;
+                    if (dbProductName.contains("sqlite")) {
+                        explainSql = "EXPLAIN QUERY PLAN " + safeSql;
+                    } else {
+                        // MySQL, PostgreSQL 等使用 EXPLAIN
+                        explainSql = "EXPLAIN " + safeSql;
+                    }
+                    stmt.executeQuery(explainSql);
+                    result.put("valid", true);
+                    result.put("message", "SQL 语法正确");
                 }
-                stmt.executeQuery(explainSql);
-                result.put("valid", true);
-                result.put("message", "SQL 语法正确");
             }
         } catch (SQLException e) {
             log.warn("SQL 校验失败: {}", e.getMessage());
@@ -99,13 +103,16 @@ public class SqlServiceImpl implements SqlService {
     @Override
     public Map<String, Object> executeQuery(String sql, int limit, String dataSourceId) {
         Map<String, Object> result = new HashMap<>();
-        String trimmedSql = sql.trim().toUpperCase();
-        if (!trimmedSql.startsWith("SELECT")) {
+        final String safeSql;
+        try {
+            safeSql = readOnlySqlGuard.validate(sql);
+        } catch (IllegalArgumentException e) {
             result.put("success", false);
-            result.put("message", "仅支持 SELECT 查询");
+            result.put("message", e.getMessage());
             return result;
         }
-        String limitedSql = sql + " LIMIT " + Math.min(limit, 100);
+
+        int safeLimit = Math.max(1, Math.min(limit, 1000));
         try {
             JdbcTemplate targetJdbcTemplate = metadataService.getJdbcTemplateByDataSourceId(dataSourceId);
             if (targetJdbcTemplate == null) {
@@ -120,36 +127,43 @@ public class SqlServiceImpl implements SqlService {
                 result.put("message", "数据源配置异常，无法获取数据库连接");
                 return result;
             }
-            try (Connection conn = dataSource.getConnection();
-                 java.sql.Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(limitedSql)) {
-                ResultSetMetaData metaData = rs.getMetaData();
-                int columnCount = metaData.getColumnCount();
-                List<String> columns = new ArrayList<>();
-                for (int i = 1; i <= columnCount; i++) {
-                    columns.add(metaData.getColumnName(i));
-                }
-                result.put("columns", columns);
-                List<Map<String, Object>> rows = new ArrayList<>();
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= columnCount; i++) {
-                        String columnName = metaData.getColumnName(i);
-                        Object value = rs.getObject(i);
-                        if (value instanceof Timestamp) value = value.toString();
-                        row.put(columnName, value);
+            try (Connection conn = dataSource.getConnection()) {
+                conn.setReadOnly(true);
+                try (java.sql.Statement stmt = conn.createStatement()) {
+                    stmt.setMaxRows(safeLimit);
+                    stmt.setQueryTimeout(60);
+                    try (ResultSet rs = stmt.executeQuery(safeSql)) {
+                        ResultSetMetaData metaData = rs.getMetaData();
+                        int columnCount = metaData.getColumnCount();
+                        List<String> columns = new ArrayList<>();
+                        for (int i = 1; i <= columnCount; i++) {
+                            columns.add(metaData.getColumnName(i));
+                        }
+                        result.put("columns", columns);
+                        List<Map<String, Object>> rows = new ArrayList<>();
+                        while (rs.next()) {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            for (int i = 1; i <= columnCount; i++) {
+                                String columnName = metaData.getColumnName(i);
+                                Object value = rs.getObject(i);
+                                if (value instanceof Timestamp) {
+                                    value = value.toString();
+                                }
+                                row.put(columnName, value);
+                            }
+                            rows.add(row);
+                        }
+                        result.put("rows", rows);
+                        result.put("total", rows.size());
+                        result.put("success", true);
+                        result.put("message", "查询成功");
                     }
-                    rows.add(row);
                 }
-                result.put("rows", rows);
-                result.put("total", rows.size());
-                result.put("success", true);
-                result.put("message", "查询成功");
             }
         } catch (SQLException e) {
             log.error("SQL 执行失败: {}", e.getMessage());
             result.put("success", false);
-            result.put("message", "SQL 执行错误: " + e.getMessage());
+            result.put("message", "SQL 执行失败");
         }
         return result;
     }
@@ -525,12 +539,6 @@ public class SqlServiceImpl implements SqlService {
     }
 
     // ========== 内部工具方法 ==========
-
-    private boolean isDangerousOperation(String sql) {
-        return sql.startsWith("DROP") || sql.startsWith("DELETE") || sql.startsWith("UPDATE")
-                || sql.startsWith("INSERT") || sql.startsWith("ALTER")
-                || sql.startsWith("CREATE") || sql.startsWith("TRUNCATE");
-    }
 
     private String generateAlias(String tableName, int index) {
         String[] parts = tableName.split("_");

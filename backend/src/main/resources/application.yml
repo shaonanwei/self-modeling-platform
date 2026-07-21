@@ -3,7 +3,9 @@ server:
 
 spring:
   config:
-    import: optional:datasource.yml
+    import:
+      - optional:classpath:datasource.yml
+      - optional:file:./config/datasource-local.yml
   sql:
     init:
       mode: never
@@ -54,3 +56,9 @@ logging:
     "[com.selfmodeling]": DEBUG
   pattern:
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+app:
+  cors:
+    allowed-origins:
+      - ${FRONTEND_ORIGIN:http://127.0.0.1:5173}
+      - http://localhost:5173

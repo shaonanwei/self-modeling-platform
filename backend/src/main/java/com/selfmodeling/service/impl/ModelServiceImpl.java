@@ -13,6 +13,7 @@ import com.selfmodeling.mapper.ModelInfoMapper;
 import com.selfmodeling.mapper.ModelStepMapper;
 import com.selfmodeling.request.InsertStepRequest;
 import com.selfmodeling.service.ModelService;
+import com.selfmodeling.service.sql.ReadOnlySqlGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,9 @@ public class ModelServiceImpl implements ModelService {
 
     @Autowired
     private ModelInfoMapper modelInfoMapper;
+
+    @Autowired
+    private ReadOnlySqlGuard readOnlySqlGuard;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -476,19 +480,18 @@ public class ModelServiceImpl implements ModelService {
         if (model == null) {
             throw new RuntimeException("模型不存在");
         }
+
+        ModelStep step = getStepDetail(modelId, stepId);
+        if (StrUtil.isBlank(step.getSqlStatement())) {
+            throw new RuntimeException("SQL语句为空");
+        }
+        String sql = readOnlySqlGuard.validate(step.getSqlStatement());
         
         String dataSourceName = StrUtil.isNotBlank(model.getDataSource()) ? model.getDataSource() : "master";
         JdbcTemplate dsJdbcTemplate = com.selfmodeling.config.DataSourceConfig.getJdbcTemplate(dataSourceName);
         if (dsJdbcTemplate == null) {
             throw new RuntimeException("数据源 " + dataSourceName + " 不存在");
         }
-        
-        ModelStep step = getStepDetail(modelId, stepId);
-        if (step == null || StrUtil.isBlank(step.getSqlStatement())) {
-            throw new RuntimeException("SQL语句为空");
-        }
-
-        String sql = step.getSqlStatement().trim();
         String resultTableName = "STEP" + stepId;
         
         LocalDateTime startTime = LocalDateTime.now();
@@ -503,34 +506,20 @@ public class ModelServiceImpl implements ModelService {
             String errorLog = null;
             try {   
                 //测试  Thread.sleep(3000);
-                if (sql.toUpperCase().startsWith("SELECT")) {
-                    JdbcTemplate asyncJdbcTemplate = com.selfmodeling.config.DataSourceConfig.getJdbcTemplate(finalDataSourceName);
-                    if (asyncJdbcTemplate != null) {
-                        asyncJdbcTemplate.execute("DROP TABLE IF EXISTS " + finalResultTableName);
-                        String createAndInsertSql = "CREATE TABLE " + finalResultTableName + " AS " + sql;
-                        asyncJdbcTemplate.execute(createAndInsertSql);
-                        List<Map<String, Object>> countResult = asyncJdbcTemplate.queryForList("SELECT COUNT(*) as count FROM " + finalResultTableName);
-                        int rowCount = countResult.isEmpty() ? 0 : ((Number) countResult.get(0).get("count")).intValue();
-                        status = "success";
-                        errorLog = "";
-                        log.info("异步执行SELECT成功：stepId={}, rows={}, resultTable={}", stepId, rowCount, finalResultTableName);
-                    } else {
-                        status = "failed";
-                        errorLog = "执行失败：数据源 " + finalDataSourceName + " 不存在";
-                        log.error("异步执行失败：数据源 {} 不存在", finalDataSourceName);
-                    }
+                JdbcTemplate asyncJdbcTemplate = com.selfmodeling.config.DataSourceConfig.getJdbcTemplate(finalDataSourceName);
+                if (asyncJdbcTemplate != null) {
+                    asyncJdbcTemplate.execute("DROP TABLE IF EXISTS " + finalResultTableName);
+                    String createAndInsertSql = "CREATE TABLE " + finalResultTableName + " AS " + sql;
+                    asyncJdbcTemplate.execute(createAndInsertSql);
+                    List<Map<String, Object>> countResult = asyncJdbcTemplate.queryForList("SELECT COUNT(*) as count FROM " + finalResultTableName);
+                    int rowCount = countResult.isEmpty() ? 0 : ((Number) countResult.get(0).get("count")).intValue();
+                    status = "success";
+                    errorLog = "";
+                    log.info("异步执行SELECT成功：stepId={}, rows={}, resultTable={}", stepId, rowCount, finalResultTableName);
                 } else {
-                    JdbcTemplate asyncJdbcTemplate = com.selfmodeling.config.DataSourceConfig.getJdbcTemplate(finalDataSourceName);
-                    if (asyncJdbcTemplate != null) {
-                        asyncJdbcTemplate.update(sql);
-                        status = "success";
-                        errorLog = "";
-                        log.info("异步执行SQL成功：stepId={}, affectedRows={}", stepId, 0);
-                    } else {
-                        status = "failed";
-                        errorLog = "执行失败：数据源 " + finalDataSourceName + " 不存在";
-                        log.error("异步执行失败：数据源 {} 不存在", finalDataSourceName);
-                    }
+                    status = "failed";
+                    errorLog = "执行失败：数据源 " + finalDataSourceName + " 不存在";
+                    log.error("异步执行失败：数据源 {} 不存在", finalDataSourceName);
                 }
             } catch (Exception e) {
                 status = "failed";
@@ -605,8 +594,9 @@ public class ModelServiceImpl implements ModelService {
             // 从根级别提取 sqlStatement
             Object sqlStatementObj = configMap.get("sqlStatement");
             log.info("从根级别提取到 sqlStatement: {}", sqlStatementObj);
-            
-            step.setSqlStatement(sqlStatementObj != null ? String.valueOf(sqlStatementObj) : null);
+
+            String sqlStatement = sqlStatementObj != null ? String.valueOf(sqlStatementObj) : null;
+            step.setSqlStatement(StrUtil.isBlank(sqlStatement) ? null : readOnlySqlGuard.validate(sqlStatement));
             
             // 从根级别删除 configType 和 sqlStatement
             configMap.remove("configType");

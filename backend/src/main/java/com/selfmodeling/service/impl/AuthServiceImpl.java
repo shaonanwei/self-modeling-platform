@@ -24,21 +24,18 @@ public class AuthServiceImpl implements AuthService {
     private SysUserMapper userMapper;
 
     private boolean checkPassword(String rawPassword, String storedPassword) {
-        log.info("验证密码 - 输入密码: [{}], 数据库密码: [{}]", rawPassword, storedPassword);
         // 正常的 BCrypt 验证
         try {
-            boolean result = BCrypt.checkpw(rawPassword, storedPassword);
-            log.info("BCrypt 验证结果: {}", result);
-            return result;
+            return BCrypt.checkpw(rawPassword, storedPassword);
         } catch (Exception e) {
-            log.error("BCrypt 验证异常", e);
+            log.error("BCrypt password verification failed", e);
             return false;
         }
     }
 
     @Override
     public LoginResponse login(LoginRequest request) {
-        log.info("尝试登录 - username: [{}], password: [{}]", request.getUsername(), request.getPassword());
+        log.info("Login attempt for username={}", request.getUsername());
         SysUser user = userMapper.selectByUsername(request.getUsername());
 
         if (user == null) {
