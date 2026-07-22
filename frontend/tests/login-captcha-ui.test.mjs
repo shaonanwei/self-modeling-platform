@@ -15,10 +15,11 @@ test('captcha refresh control is a keyboard-accessible button', () => {
   )
 })
 
-test('captcha refresh control provides clear loading and refresh feedback', () => {
+test('captcha refresh control keeps loading feedback without hover text', () => {
   assert.match(loginPage, /class="captcha-loading-icon"/)
-  assert.match(loginPage, /class="captcha-refresh-hint"/)
-  assert.match(loginPage, />换一张</)
+  assert.doesNotMatch(loginPage, /captcha-refresh-hint/)
+  assert.doesNotMatch(loginPage, /RefreshRight/)
+  assert.doesNotMatch(loginPage, /title="看不清？换一张"/)
 })
 
 test('captcha card aligns with the current input height', () => {
@@ -27,4 +28,17 @@ test('captcha card aligns with the current input height', () => {
 
 test('captcha image remains fully visible inside the card', () => {
   assert.match(loginPage, /\.captcha-image img\s*{[\s\S]*?object-fit:\s*contain;/)
+})
+
+test('captcha button uses transparent chrome', () => {
+  const block = loginPage.match(
+    /\.captcha-image\s*\{([\s\S]*?)\n\}/
+  )?.[1]
+
+  assert.ok(block, 'missing .captcha-image styles')
+  assert.match(block, /padding:\s*0;/)
+  assert.match(block, /border:\s*0;/)
+  assert.match(block, /background:\s*transparent;/)
+  assert.match(block, /box-shadow:\s*none;/)
+  assert.doesNotMatch(loginPage, /\.captcha-image:hover\s*\{/)
 })
