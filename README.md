@@ -90,7 +90,7 @@ npm --version
 
 优先在原来的前端和后端终端中分别按 `Ctrl+C`，等待进程退出。
 
-如果原终端已经关闭或服务在后台运行，可在项目根目录执行以下命令。脚本只会停止命令行中包含当前项目根目录的 8080/5173 监听进程；其他程序即使占用了相同端口也不会被停止。
+如果原终端已经关闭或服务在后台运行，可在项目根目录执行以下命令。脚本只会停止已确认属于当前项目的 8080/5173 监听进程；其他程序即使占用了相同端口也不会被停止。Spring Boot 的 Java 进程有时会把 classpath 放在临时 `.argfile` 中，下面的脚本会额外检查该文件，避免误把本项目进程识别为未知进程。
 
 ```powershell
 $projectRoot = (Resolve-Path .).Path
@@ -100,13 +100,45 @@ $connections = Get-NetTCPConnection -State Listen -ErrorAction Stop |
 $processIds = $connections |
     Select-Object -ExpandProperty OwningProcess -Unique
 
+function Test-ProjectProcess {
+    param($Process, [string]$ProjectRoot)
+
+    if (-not $Process.CommandLine) {
+        return $false
+    }
+
+    if ($Process.CommandLine.IndexOf(
+        $ProjectRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -ge 0) {
+        return $true
+    }
+
+    # Spring Boot 可能使用 @C:\...\spring-boot-*.argfile 隐藏完整 classpath。
+    $argFileMatch = [regex]::Match(
+        $Process.CommandLine,
+        '@(?<path>\S+\.argfile)'
+    )
+    if (-not $argFileMatch.Success) {
+        return $false
+    }
+
+    $argumentFile = $argFileMatch.Groups['path'].Value
+    if (-not (Test-Path -LiteralPath $argumentFile)) {
+        return $false
+    }
+
+    $argumentText = Get-Content -Raw -LiteralPath $argumentFile
+    $normalizedArgumentText = $argumentText -replace '\\\\', '\'
+    return $normalizedArgumentText.IndexOf(
+        $ProjectRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -ge 0
+}
+
 foreach ($processId in $processIds) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId"
-    $belongsToProject = $process.CommandLine -and
-        $process.CommandLine.IndexOf(
-            $projectRoot,
-            [System.StringComparison]::OrdinalIgnoreCase
-        ) -ge 0
+    $belongsToProject = Test-ProjectProcess $process $projectRoot
 
     if ($belongsToProject) {
         Stop-Process -Id $processId -Force
@@ -130,6 +162,15 @@ mvn spring-boot:run
 
 日志出现 `Started SelfModelingApplication` 表示后端已经就绪，默认地址为 `http://127.0.0.1:8080`。
 
+如果刚执行过 `git pull`，或本次修改删除、移动了 Java 类（尤其是配置类），先清理旧的 `target` 输出再启动：
+
+```powershell
+Set-Location backend
+mvn clean spring-boot:run
+```
+
+这是为避免 Maven 保留已删除类的 `.class` 文件，导致启动时报已删除类的 `ClassNotFoundException`。普通重启且没有删除或移动 Java 类时，继续使用较快的 `mvn spring-boot:run` 即可。
+
 ### 4. 启动前端
 
 再打开一个新的 PowerShell 终端，在项目根目录执行：
@@ -139,7 +180,7 @@ Set-Location frontend
 npm run dev -- --host 127.0.0.1
 ```
 
-日志出现 `VITE ... ready` 表示前端已经就绪，访问地址为 `http://127.0.0.1:5173/`。正常重启不需要重复执行 `npm install`；只有首次安装或依赖发生变化时才需要重新安装依赖。
+日志出现 `VITE ... ready` 表示前端已经就绪，访问地址为 `http://127.0.0.1:5173/`。正常重启不需要重复执行 `npm install`；只有首次安装或依赖发生变化时才需要重新安装依赖。若后端提示“8080 已被占用”，先再次运行上面的停止脚本，确认旧后端已退出后再启动；不要直接终止未确认归属的 Java 进程。
 
 ### 5. 健康检查
 
