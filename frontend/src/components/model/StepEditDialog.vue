@@ -350,9 +350,7 @@ const handleSaveAndClose = async () => {
     } else if (props.editStep) {
       const updateData: Partial<ModelStep> = {
         stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigStr
+        stepDesc: form.stepDesc
       }
       await modelApi.updateStep(props.modelId, props.editStep.id, updateData)
       ElMessage.success('更新成功')
@@ -434,9 +432,6 @@ const handleSubmit = async () => {
       ElMessage.success('插入成功')
     } else if (props.editStep) {
       const updateData: Partial<ModelStep> = {
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
         stepConfig: stepConfigStr
       }
       await modelApi.updateStep(props.modelId, props.editStep.id, updateData)
