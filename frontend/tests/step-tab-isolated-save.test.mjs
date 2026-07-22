@@ -8,32 +8,72 @@ const dialogPath = fileURLToPath(
 )
 const dialogSource = readFileSync(dialogPath, 'utf8')
 
-function getEditUpdateBranch(handlerStart, handlerEnd) {
-  const start = dialogSource.indexOf(handlerStart)
-  const end = dialogSource.indexOf(handlerEnd, start)
-  assert.notEqual(start, -1, `missing handler: ${handlerStart}`)
-  assert.notEqual(end, -1, `missing handler end: ${handlerEnd}`)
-
-  const handler = dialogSource.slice(start, end)
-  const match = handler.match(/else if \(props\.editStep\) \{([\s\S]*?)\n\s*\} else \{/)
-  assert.ok(match, `missing edit branch in ${handlerStart}`)
-  return match[1]
+function getSourceBlock(startMarker, endMarker) {
+  const start = dialogSource.indexOf(startMarker)
+  const end = dialogSource.indexOf(endMarker, start)
+  assert.notEqual(start, -1, `missing source block: ${startMarker}`)
+  assert.notEqual(end, -1, `missing source block end: ${endMarker}`)
+  return dialogSource.slice(start, end)
 }
 
-test('basic info save only submits basic info fields in edit mode', () => {
-  const branch = getEditUpdateBranch('const handleSaveAndClose', 'const handlePrev')
+test('next saves basic info before opening SQL configuration', () => {
+  const handler = getSourceBlock('const handleNext', 'const handleSaveAndClose')
+  const saveIndex = handler.indexOf('await saveBasicInfo()')
+  const navigationIndex = handler.indexOf('currentStep.value = 1')
 
-  assert.match(branch, /stepName:\s*form\.stepName/)
-  assert.match(branch, /stepDesc:\s*form\.stepDesc/)
-  assert.doesNotMatch(branch, /stepConfig:/)
-  assert.doesNotMatch(branch, /stepType:/)
+  assert.notEqual(saveIndex, -1, 'next must persist basic info')
+  assert.notEqual(navigationIndex, -1, 'next must open SQL configuration')
+  assert.ok(saveIndex < navigationIndex, 'save must finish before navigation')
 })
 
-test('SQL save only submits step config in edit mode', () => {
-  const branch = getEditUpdateBranch('const handleSubmit', '</script>')
+test('SQL step navigator uses the same persisted next action', () => {
+  const navigator = getSourceBlock('<div class="steps-wrapper">', '<div class="wizard-content">')
+  const sqlStep = navigator.slice(navigator.indexOf('SQL配置') - 400)
 
-  assert.match(branch, /stepConfig:\s*stepConfigStr/)
-  assert.doesNotMatch(branch, /stepName:/)
-  assert.doesNotMatch(branch, /stepDesc:/)
-  assert.doesNotMatch(branch, /stepType:/)
+  assert.match(sqlStep, /@click="handleNext"/)
+  assert.doesNotMatch(sqlStep, /@click="currentStep = 1"/)
+})
+
+test('basic info save creates append and inserted steps and stores returned id', () => {
+  const helper = getSourceBlock('const saveBasicInfo', 'const handleNext')
+
+  assert.match(helper, /await modelApi\.addStep\(props\.modelId, addData\)/)
+  assert.match(helper, /await modelApi\.insertStep\(props\.modelId, insertData\)/)
+  assert.match(helper, /persistedStepId\.value\s*=\s*response\.data\.id/g)
+})
+
+test('basic info save updates the persisted step without SQL fields', () => {
+  const helper = getSourceBlock('const saveBasicInfo', 'const handleNext')
+  const updateDataMatch = helper.match(
+    /const updateData: Partial<ModelStep> = \{([\s\S]*?)\}\s*await modelApi\.updateStep/
+  )
+
+  assert.ok(updateDataMatch, 'missing basic info update payload')
+  assert.match(updateDataMatch[1], /stepName:\s*form\.stepName/)
+  assert.match(updateDataMatch[1], /stepDesc:\s*form\.stepDesc/)
+  assert.doesNotMatch(updateDataMatch[1], /stepConfig:/)
+  assert.doesNotMatch(updateDataMatch[1], /stepType:/)
+  assert.match(helper, /modelApi\.updateStep\(props\.modelId, persistedStepId\.value, updateData\)/)
+})
+
+test('save and close reuses the same basic info persistence action', () => {
+  const handler = getSourceBlock('const handleSaveAndClose', 'const handlePrev')
+
+  assert.match(handler, /await saveBasicInfo\(\)/)
+  assert.doesNotMatch(handler, /modelApi\.(addStep|insertStep|updateStep)/)
+})
+
+test('SQL save only updates the persisted step config', () => {
+  const handler = getSourceBlock('const handleSubmit', '</script>')
+  const updateDataMatch = handler.match(
+    /const updateData: Partial<ModelStep> = \{([\s\S]*?)\}\s*await modelApi\.updateStep/
+  )
+
+  assert.ok(updateDataMatch, 'missing SQL update payload')
+  assert.match(updateDataMatch[1], /stepConfig:\s*stepConfigStr/)
+  assert.doesNotMatch(updateDataMatch[1], /stepName:/)
+  assert.doesNotMatch(updateDataMatch[1], /stepDesc:/)
+  assert.doesNotMatch(updateDataMatch[1], /stepType:/)
+  assert.match(handler, /modelApi\.updateStep\(props\.modelId, persistedStepId\.value, updateData\)/)
+  assert.doesNotMatch(handler, /modelApi\.(addStep|insertStep)/)
 })
