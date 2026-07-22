@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 修复编辑已有步骤时一个 Tab 的保存操作覆盖另一个 Tab 已保存数据的问题。
+**Goal:** 修复步骤 Tab 相互覆盖以及“下一步”不保存基本信息的问题，并确保新增、插入模式在 SQL 配置页只更新已经创建的步骤。
 
-**Architecture:** 保留现有步骤更新 API 路径。前端仅发送当前 Tab 对应字段；后端在更新前读取现有步骤，并用数据库原值补齐请求中为 `null` 的字段。仅当请求显式携带 `stepConfig` 时解析并校验 SQL。
+**Architecture:** 保留现有步骤创建、插入和更新 API。弹窗维护一个已持久化步骤 ID：编辑模式使用原步骤 ID；新增和插入模式在点击“下一步”时创建记录并保存返回 ID。SQL 配置页始终只通过该 ID 更新 `stepConfig`。
 
 **Tech Stack:** Vue 3、TypeScript、Node.js 内置测试运行器、Spring Boot、JUnit 5、Mockito、Maven。
 
@@ -13,7 +13,8 @@
 - 基本信息 Tab 只更新 `stepName` 和 `stepDesc`。
 - SQL 配置 Tab 只更新 `stepConfig` 及由其解析得到的 `sqlStatement`。
 - 请求字段为 `null` 时保留数据库原值；空字符串仍是明确更新值。
-- 新增和插入步骤流程保持现状。
+- 编辑、新增和插入模式点击“下一步”时必须先持久化基本信息。
+- 新增和插入模式进入 SQL 配置后只更新已创建的步骤，不重复创建。
 - SQL 更新继续执行现有单条只读 `SELECT` 校验。
 - 不修改或提交当前工作树中无关的 `README.md`。
 
@@ -330,3 +331,87 @@ git log -3 --oneline
 - 前端 GREEN：隔离保存测试与验证码测试共 6 个测试通过。
 - 构建：Maven 打包和 Vite 生产构建成功；Vite 保留项目现有的大 chunk 警告。
 - 浏览器双向保存冒烟未自动执行，因为当前没有明确可修改的专用测试步骤，避免改动真实业务数据。
+
+---
+
+### Task 4: “下一步”持久化基本信息并复用步骤 ID
+
+**Files:**
+- Modify: `frontend/tests/step-tab-isolated-save.test.mjs`
+- Modify: `frontend/src/components/model/StepEditDialog.vue`
+- Modify: `docs/superpowers/specs/2026-07-22-step-tab-isolated-save-design.md`
+- Modify: `docs/superpowers/plans/2026-07-22-step-tab-isolated-save.md`
+
+**Interfaces:**
+- Consumes: `modelApi.addStep(...)`、`modelApi.insertStep(...)` 返回的 `{ data: ModelStep }`，以及 `modelApi.updateStep(modelId, stepId, data)`。
+- Produces: `persistedStepId: Ref<number | null>` 和 `saveBasicInfo(): Promise<void>`；SQL 保存只允许更新 `persistedStepId` 指向的记录。
+
+- [x] **Step 1: 扩展前端失败测试**
+
+在 `frontend/tests/step-tab-isolated-save.test.mjs` 中验证：
+
+```javascript
+test('next saves basic info before opening SQL configuration', () => {
+  const handler = getSourceBlock('const handleNext', 'const handleSaveAndClose')
+  assert.ok(handler.indexOf('await saveBasicInfo()') < handler.indexOf('currentStep.value = 1'))
+})
+
+test('new and inserted steps persist the returned id', () => {
+  const helper = getSourceBlock('const saveBasicInfo', 'const handleNext')
+  assert.match(helper, /persistedStepId\.value\s*=\s*response\.data\.id/)
+})
+
+test('SQL save only updates the persisted step', () => {
+  const handler = getSourceBlock('const handleSubmit', '</script>')
+  assert.match(handler, /modelApi\.updateStep\(props\.modelId, persistedStepId\.value, updateData\)/)
+  assert.doesNotMatch(handler, /modelApi\.(addStep|insertStep)/)
+})
+```
+
+- [x] **Step 2: 运行测试并确认 RED**
+
+```powershell
+Set-Location frontend
+node --test tests/step-tab-isolated-save.test.mjs
+```
+
+预期：新测试失败，因为当前“下一步”只切换页面，且 SQL 保存仍会在新增和插入模式重复创建记录。
+
+- [x] **Step 3: 实现统一基础信息持久化**
+
+在 `StepEditDialog.vue` 中增加 `persistedStepId`。编辑模式打开时赋值为 `props.editStep.id`，新增和插入模式从创建接口响应中赋值。抽取 `saveBasicInfo()`：已有 ID 时仅更新 `stepName`、`stepDesc`；没有 ID 时根据新增或插入模式创建空 SQL 记录并保存返回 ID。
+
+- [x] **Step 4: 让所有 SQL 入口先保存基本信息**
+
+`handleNext` 在表单校验通过后调用 `await saveBasicInfo()`，成功后才把 `currentStep` 设为 `1`。步骤导航的“SQL配置”点击事件改为 `handleNext`，防止绕过保存；失败时提示错误并保持当前页面。
+
+- [x] **Step 5: SQL 配置只更新已持久化步骤**
+
+`handleSubmit` 先检查 `persistedStepId`，然后仅提交：
+
+```typescript
+const updateData: Partial<ModelStep> = { stepConfig: stepConfigStr }
+await modelApi.updateStep(props.modelId, persistedStepId.value, updateData)
+```
+
+删除 SQL 保存中的 `addStep` 和 `insertStep` 分支。返回基本信息后再次保存时继续更新同一 ID。
+
+- [x] **Step 6: 验证前端测试和构建**
+
+```powershell
+node --test tests/step-tab-isolated-save.test.mjs tests/login-captcha-ui.test.mjs
+npm run build
+```
+
+预期：所有 Node 回归测试通过；`vue-tsc` 和 Vite 构建成功，允许保留现有大 chunk 警告。
+
+- [x] **Step 7: 检查差异**
+
+```powershell
+git diff --check
+git status --short
+```
+
+预期：仅本任务文件和用户原有的 `README.md` 显示修改；`README.md` 不被覆盖或暂存。
+
+**执行结果：** RED 阶段新增 6 个测试全部失败；GREEN 阶段本文件与验证码界面测试共 10 个测试通过。`npm run build` 成功，保留现有大 chunk 警告。
