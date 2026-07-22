@@ -36,7 +36,7 @@
           <div 
             class="step-item" 
             :class="{ active: currentStep === 1, completed: currentStep > 1 }"
-            @click="currentStep = 1"
+            @click="handleNext"
           >
             <div class="step-number">
               <span v-if="currentStep <= 1">2</span>
@@ -153,6 +153,7 @@
           <el-button
             v-if="currentStep === 0"
             type="primary"
+            :loading="nextLoading"
             @click="handleNext"
             :disabled="!form.stepName.trim()"
             class="btn-primary"
@@ -212,9 +213,11 @@ const emit = defineEmits<{
 const formRef = ref()
 const submitLoading = ref(false)
 const saveCloseLoading = ref(false)
+const nextLoading = ref(false)
 const queryEditorRef = ref<InstanceType<typeof QueryEditor>>()
 
 const currentStep = ref(0)
+const persistedStepId = ref<number | null>(null)
 
 const form = reactive({
   stepCode: '',
@@ -254,6 +257,7 @@ function clearFormData() {
   sqlConfig.sqlStatement = ''
   currentQueryConfig = null
   currentStep.value = 0
+  persistedStepId.value = null
   nextTick(() => formRef.value?.clearValidate())
 }
 
@@ -276,6 +280,7 @@ watch(visible, async (val) => {
   if (val) {
     currentStep.value = 0
     if (props.editStep) {
+      persistedStepId.value = props.editStep.id
       await nextTick()
       fillForm(props.editStep)
       await nextTick()
@@ -301,13 +306,76 @@ const handleCancel = () => {
   visible.value = false
 }
 
+const saveBasicInfo = async () => {
+  if (persistedStepId.value !== null) {
+    const updateData: Partial<ModelStep> = {
+      stepName: form.stepName,
+      stepDesc: form.stepDesc
+    }
+    await modelApi.updateStep(props.modelId, persistedStepId.value, updateData)
+    return
+  }
+
+  const stepConfigObj = {
+    configType: 'SQL' as const,
+    sqlStatement: '',
+    queryConfig: undefined
+  }
+
+  if (props.isAppendMode) {
+    const addData: Partial<ModelStep> = {
+      stepName: form.stepName,
+      stepType: 'task',
+      stepDesc: form.stepDesc,
+      stepConfig: JSON.stringify(stepConfigObj)
+    }
+    const response = await modelApi.addStep(props.modelId, addData)
+    persistedStepId.value = response.data.id
+    form.stepCode = response.data.stepCode
+    return
+  }
+
+  if (props.insertAfterStepId) {
+    const insertData: InsertStepRequest = {
+      afterStepId: props.insertAfterStepId,
+      stepName: form.stepName,
+      stepType: 'task',
+      stepDesc: form.stepDesc,
+      stepConfig: stepConfigObj
+    }
+    const response = await modelApi.insertStep(props.modelId, insertData)
+    persistedStepId.value = response.data.id
+    form.stepCode = response.data.stepCode
+    return
+  }
+
+  throw new Error('未找到可保存的步骤')
+}
+
 const handleNext = async () => {
+  if (currentStep.value === 1 || nextLoading.value || saveCloseLoading.value) return
+
   try {
     await formRef.value?.validate()
   } catch {
     return
   }
-  currentStep.value = 1
+
+  nextLoading.value = true
+  try {
+    await saveBasicInfo()
+    ElMessage.success('基本信息已保存')
+    emit('success')
+    currentStep.value = 1
+  } catch (e: unknown) {
+    if (e instanceof Error) {
+      ElMessage.error(e.message || '保存基本信息失败')
+    } else {
+      ElMessage.error('保存基本信息失败')
+    }
+  } finally {
+    nextLoading.value = false
+  }
 }
 
 const handleSaveAndClose = async () => {
@@ -317,50 +385,12 @@ const handleSaveAndClose = async () => {
     return
   }
 
-  if (saveCloseLoading.value) return
+  if (saveCloseLoading.value || nextLoading.value) return
   saveCloseLoading.value = true
 
   try {
-    const stepConfigObj = {
-      configType: 'SQL' as const,
-      sqlStatement: '',
-      queryConfig: undefined
-    }
-    const stepConfigStr = JSON.stringify(stepConfigObj)
-
-    if (props.isAppendMode) {
-      const addData: Partial<ModelStep> = {
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigStr
-      }
-      await modelApi.addStep(props.modelId, addData)
-      ElMessage.success('添加成功')
-    } else if (props.insertAfterStepId) {
-      const insertData: InsertStepRequest = {
-        afterStepId: props.insertAfterStepId,
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigObj
-      }
-      await modelApi.insertStep(props.modelId, insertData)
-      ElMessage.success('插入成功')
-    } else if (props.editStep) {
-      const updateData: Partial<ModelStep> = {
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigStr
-      }
-      await modelApi.updateStep(props.modelId, props.editStep.id, updateData)
-      ElMessage.success('更新成功')
-    } else {
-      ElMessage.error('未知的操作步骤')
-      return
-    }
-
+    await saveBasicInfo()
+    ElMessage.success('保存成功')
     visible.value = false
     nextTick(() => emit('success'))
   } catch (e: unknown) {
@@ -382,6 +412,11 @@ const handlePrev = () => {
 
 const handleSubmit = async () => {
   if (submitLoading.value) return
+
+  if (persistedStepId.value === null) {
+    ElMessage.error('请先保存基本信息')
+    return
+  }
 
   const validation = queryEditorRef.value?.validateConfig?.()
   if (validation && !validation.valid) {
@@ -413,38 +448,11 @@ const handleSubmit = async () => {
 
     const stepConfigStr = JSON.stringify(stepConfigObj)
 
-    if (props.isAppendMode) {
-      const addData: Partial<ModelStep> = {
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigStr
-      }
-      await modelApi.addStep(props.modelId, addData)
-      ElMessage.success('添加成功')
-    } else if (props.insertAfterStepId) {
-      const insertData: InsertStepRequest = {
-        afterStepId: props.insertAfterStepId,
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigObj
-      }
-      await modelApi.insertStep(props.modelId, insertData)
-      ElMessage.success('插入成功')
-    } else if (props.editStep) {
-      const updateData: Partial<ModelStep> = {
-        stepName: form.stepName,
-        stepType: 'task',
-        stepDesc: form.stepDesc,
-        stepConfig: stepConfigStr
-      }
-      await modelApi.updateStep(props.modelId, props.editStep.id, updateData)
-      ElMessage.success('更新成功')
-    } else {
-      ElMessage.error('未知的操作步骤')
-      return
+    const updateData: Partial<ModelStep> = {
+      stepConfig: stepConfigStr
     }
+    await modelApi.updateStep(props.modelId, persistedStepId.value, updateData)
+    ElMessage.success('保存成功')
 
     visible.value = false
     nextTick(() => emit('success'))
