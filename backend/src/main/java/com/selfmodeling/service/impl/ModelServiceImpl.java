@@ -294,9 +294,24 @@ public class ModelServiceImpl implements ModelService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStep(Long modelId, Long stepId, ModelStep step) {
-        getStepDetail(modelId, stepId);
-        
-        extractAndSetConfigFields(step);
+        ModelStep existingStep = getStepDetail(modelId, stepId);
+
+        if (step.getStepName() == null) {
+            step.setStepName(existingStep.getStepName());
+        }
+        if (step.getStepType() == null) {
+            step.setStepType(existingStep.getStepType());
+        }
+        if (step.getStepDesc() == null) {
+            step.setStepDesc(existingStep.getStepDesc());
+        }
+
+        if (step.getStepConfig() == null) {
+            step.setStepConfig(existingStep.getStepConfig());
+            step.setSqlStatement(existingStep.getSqlStatement());
+        } else {
+            extractAndSetConfigFields(step);
+        }
         
         stepMapper.updateStepById(
             stepId, step.getStepName(), step.getStepType(), step.getStepDesc(),

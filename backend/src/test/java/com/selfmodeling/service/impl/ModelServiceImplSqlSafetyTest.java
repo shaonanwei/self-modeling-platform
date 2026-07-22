@@ -56,6 +56,45 @@ class ModelServiceImplSqlSafetyTest {
     }
 
     @Test
+    void preservesExistingSqlWhenOnlyBasicInfoChanges() {
+        ModelStep existing = existingStep("SELECT 1");
+        existing.setStepName("old name");
+        existing.setStepType("task");
+        existing.setStepDesc("old description");
+        existing.setStepConfig("{\"queryConfig\":{\"tables\":[]}}");
+        when(stepMapper.selectById(STEP_ID)).thenReturn(existing);
+
+        ModelStep basicInfoUpdate = new ModelStep();
+        basicInfoUpdate.setStepName("new name");
+        basicInfoUpdate.setStepDesc("");
+
+        modelService.updateStep(MODEL_ID, STEP_ID, basicInfoUpdate);
+
+        verify(stepMapper).updateStepById(
+                eq(STEP_ID), eq("new name"), eq("task"), eq(""),
+                eq("{\"queryConfig\":{\"tables\":[]}}"), eq("SELECT 1"));
+    }
+
+    @Test
+    void preservesExistingBasicInfoWhenOnlySqlChanges() {
+        ModelStep existing = existingStep("SELECT 1");
+        existing.setStepName("existing name");
+        existing.setStepType("task");
+        existing.setStepDesc("existing description");
+        existing.setStepConfig("{}");
+        when(stepMapper.selectById(STEP_ID)).thenReturn(existing);
+
+        ModelStep sqlUpdate = new ModelStep();
+        sqlUpdate.setStepConfig("{\"configType\":\"SQL\",\"sqlStatement\":\"SELECT 2\"}");
+
+        modelService.updateStep(MODEL_ID, STEP_ID, sqlUpdate);
+
+        verify(stepMapper).updateStepById(
+                eq(STEP_ID), eq("existing name"), eq("task"), eq("existing description"),
+                eq("{}"), eq("SELECT 2"));
+    }
+
+    @Test
     void rejectsUnsafeSqlBeforeStartingStepExecution() {
         ModelInfo model = new ModelInfo();
         model.setId(MODEL_ID);
