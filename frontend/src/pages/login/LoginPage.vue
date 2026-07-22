@@ -61,10 +61,28 @@
                 @keyup.enter="handleLogin"
               />
             </div>
-            <div class="captcha-image" @click="refreshCaptcha">
-              <img v-if="captchaImage" :src="captchaImage" alt="验证码" />
-              <div v-else class="captcha-loading">加载中</div>
-            </div>
+            <button
+              type="button"
+              class="captcha-image"
+              aria-label="刷新验证码"
+              title="看不清？换一张"
+              @click="refreshCaptcha"
+            >
+              <img
+                v-if="captchaImage"
+                :src="captchaImage"
+                alt="验证码"
+                draggable="false"
+              />
+              <span v-else class="captcha-loading">
+                <el-icon class="captcha-loading-icon"><Loading /></el-icon>
+                <span>加载中</span>
+              </span>
+              <span v-if="captchaImage" class="captcha-refresh-hint" aria-hidden="true">
+                <el-icon><RefreshRight /></el-icon>
+                <span>换一张</span>
+              </span>
+            </button>
           </div>
         </el-form-item>
 
@@ -100,7 +118,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Key } from '@element-plus/icons-vue'
+import { User, Lock, Key, Loading, RefreshRight } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/authStore'
 import { authApi } from '@/api/authApi'
 
@@ -342,36 +360,112 @@ onMounted(() => {
 
 .captcha-input-wrapper {
   flex: 1;
+  min-width: 0;
 }
 
 .captcha-image {
-  width: 120px;
-  height: 40px;
+  appearance: none;
+  position: relative;
+  width: 144px;
+  height: 62px;
+  padding: 6px;
   flex-shrink: 0;
   cursor: pointer;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid #dcdfe6;
-  transition: all 0.3s ease;
+  border: 1px solid #e1e5ee;
+  background: linear-gradient(145deg, #ffffff, #f7f9fc);
+  box-shadow: 0 4px 14px rgba(31, 45, 61, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .captcha-image:hover {
+  border-color: #aab7f3;
+  box-shadow: 0 7px 18px rgba(102, 126, 234, 0.16);
+  transform: translateY(-1px);
+}
+
+.captcha-image:focus-visible {
+  outline: 3px solid rgba(102, 126, 234, 0.2);
+  outline-offset: 2px;
   border-color: #667eea;
-  box-shadow: 0 0 0 1px #667eea;
+}
+
+.captcha-image:active {
+  transform: translateY(0);
 }
 
 .captcha-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+  user-select: none;
 }
 
 .captcha-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: #909399;
+}
+
+.captcha-loading-icon {
+  font-size: 15px;
+  animation: captcha-spin 0.9s linear infinite;
+}
+
+.captcha-refresh-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(48, 49, 51, 0.76);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.captcha-image:hover .captcha-refresh-hint,
+.captcha-image:focus-visible .captcha-refresh-hint {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes captcha-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .login-card {
+    width: calc(100% - 32px);
+    box-sizing: border-box;
+    padding: 40px 24px;
+  }
+
+  .captcha-wrapper {
+    gap: 8px;
+  }
+
+  .captcha-image {
+    width: 128px;
+  }
 }
 
 .remember-checkbox {
