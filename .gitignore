@@ -43,3 +43,4 @@ dist/
 
 # Local datasource credentials
 backend/config/datasource-local.yml
+backend/config/ai-local.yml

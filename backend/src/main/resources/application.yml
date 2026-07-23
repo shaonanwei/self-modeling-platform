@@ -7,6 +7,7 @@ spring:
     import:
       - optional:classpath:datasource.yml
       - optional:file:./config/datasource-local.yml
+      - optional:file:./config/ai-local.yml
   sql:
     init:
       mode: never
@@ -57,3 +58,15 @@ logging:
     "[com.selfmodeling]": DEBUG
   pattern:
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+app:
+  ai:
+    sql:
+      enabled: ${AI_SQL_ENABLED:false}
+      api-key: ${QWEN_API_KEY:}
+      base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      model: ${QWEN_MODEL:qwen-plus}
+      temperature: 0.1
+      timeout-seconds: 60
+      max-tool-rounds: 4
+      max-concurrent-requests-per-user: 1

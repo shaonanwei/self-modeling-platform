@@ -1,0 +1,6 @@
+app:
+  ai:
+    sql:
+      enabled: false
+      api-key: ${QWEN_API_KEY:}
+      model: qwen-plus
