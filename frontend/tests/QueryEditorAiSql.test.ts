@@ -76,6 +76,14 @@ describe('QueryEditor AI SQL 集成', () => {
     vi.useRealTimers()
   })
 
+  it('将 AI 生成 SQL 放在右侧画布按钮之前', () => {
+    const wrapper = mountQueryEditor()
+    const actions = wrapper.findAll('.qe-toolbar-right button')
+      .map(button => button.text().trim())
+
+    expect(actions).toEqual(['AI 生成 SQL', '画布', '校验'])
+  })
+
   it('应用安全 AI SQL 仅更新编辑器和本地状态，不保存、不执行、不转换画布', async () => {
     const wrapper = mountQueryEditor()
     const store = useQueryEditorStore()

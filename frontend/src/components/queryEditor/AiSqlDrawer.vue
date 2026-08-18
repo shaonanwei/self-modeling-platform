@@ -7,9 +7,14 @@
     :with-header="false"
     append-to-body
     class="ai-sql-drawer"
+    style="--el-drawer-bg-color: #16213e; --el-drawer-padding-primary: 0px;"
     @update:model-value="handleVisibleChange"
   >
-    <section class="ai-sql-panel" aria-label="AI SQL 助手">
+    <section
+      class="ai-sql-panel"
+      style="--ai-chat-font-size: 12px;"
+      aria-label="AI SQL 助手"
+    >
       <header class="ai-sql-header">
         <div>
           <h2>AI SQL 助手</h2>
@@ -51,7 +56,12 @@
             :class="`ai-message--${message.role}`"
           >
             <span class="ai-message-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
-            <p>{{ message.content }}</p>
+            <div
+              v-if="message.role === 'assistant'"
+              class="ai-markdown"
+              v-html="renderMarkdown(message.content)"
+            ></div>
+            <p v-else>{{ message.content }}</p>
           </article>
         </template>
 
@@ -66,7 +76,7 @@
 
         <article v-if="partialAssistant" class="ai-message ai-message--assistant ai-message--partial">
           <span class="ai-message-role">AI</span>
-          <p>{{ partialAssistant }}</p>
+          <div class="ai-markdown" v-html="renderMarkdown(partialAssistant)"></div>
         </article>
 
         <section v-if="statusMessage" class="ai-status" role="status">{{ statusMessage }}</section>
@@ -144,6 +154,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import MarkdownIt from 'markdown-it'
 import { streamAiSql } from '@/api/aiSqlApi'
 import type { AiSqlMessage, AiSqlSseEvent } from '@/types/aiSql'
 
@@ -167,6 +178,12 @@ const emit = defineEmits<{
 }>()
 
 const quickPrompts = ['根据描述生成 SQL', '优化当前 SQL', '解释并修正当前 SQL']
+const markdown = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true,
+  typographer: false
+})
 const input = ref('')
 const generating = ref(false)
 const partialAssistant = ref('')
@@ -257,6 +274,10 @@ function handleEvent(event: AiSqlSseEvent) {
   scrollToLatest()
 }
 
+function renderMarkdown(content: string): string {
+  return markdown.render(content)
+}
+
 async function sendMessage(content = input.value.trim(), baseMessages: AiSqlMessage[] = props.messages) {
   const normalizedContent = content.trim()
   if (!normalizedContent || generating.value) return
@@ -286,12 +307,14 @@ async function sendMessage(content = input.value.trim(), baseMessages: AiSqlMess
       onEvent: handleEvent
     })
     if (receivedDone && !receivedError && !requestAborted && partialAssistant.value) {
+      const completedContent = partialAssistant.value
       const completedMessages: AiSqlMessage[] = [
         ...activeRequestMessages,
-        { role: 'assistant', content: partialAssistant.value }
+        { role: 'assistant', content: completedContent }
       ]
       activeRequestMessages = completedMessages
       emit('update:messages', completedMessages)
+      partialAssistant.value = ''
     }
   } catch (error: unknown) {
     if (!requestAborted && !isAbortError(error)) {
@@ -338,8 +361,13 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  font-size: var(--ai-chat-font-size);
   color: #dbeafe;
   background: #16213e;
+}
+
+:global(.ai-sql-drawer) {
+  border-left: 1px solid #0f3460;
 }
 
 .ai-sql-header {
@@ -402,7 +430,7 @@ onBeforeUnmount(() => {
 .ai-message-role {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--ai-chat-font-size);
   font-weight: 600;
   color: #93c5fd;
 }
@@ -410,9 +438,104 @@ onBeforeUnmount(() => {
 .ai-message p,
 .ai-sql-empty p {
   margin: 0;
+  font-size: var(--ai-chat-font-size);
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.ai-markdown {
+  font-size: var(--ai-chat-font-size);
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+:deep(.ai-markdown > :first-child) {
+  margin-top: 0;
+}
+
+:deep(.ai-markdown > :last-child) {
+  margin-bottom: 0;
+}
+
+:deep(.ai-markdown p),
+:deep(.ai-markdown ul),
+:deep(.ai-markdown ol),
+:deep(.ai-markdown blockquote),
+:deep(.ai-markdown pre),
+:deep(.ai-markdown table),
+:deep(.ai-markdown h1),
+:deep(.ai-markdown h2),
+:deep(.ai-markdown h3),
+:deep(.ai-markdown h4),
+:deep(.ai-markdown h5),
+:deep(.ai-markdown h6) {
+  margin: 0 0 8px;
+  font-size: var(--ai-chat-font-size);
+}
+
+:deep(.ai-markdown ul),
+:deep(.ai-markdown ol) {
+  padding-left: 20px;
+}
+
+:deep(.ai-markdown h1),
+:deep(.ai-markdown h2),
+:deep(.ai-markdown h3),
+:deep(.ai-markdown h4),
+:deep(.ai-markdown h5),
+:deep(.ai-markdown h6) {
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+:deep(.ai-markdown blockquote) {
+  padding-left: 10px;
+  border-left: 3px solid #3b82f6;
+  color: #bfdbfe;
+}
+
+:deep(.ai-markdown a) {
+  color: #60a5fa;
+}
+
+:deep(.ai-markdown code) {
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #dbeafe;
+  background: rgba(15, 52, 96, 0.8);
+  font: var(--ai-chat-font-size)/1.6 Consolas, 'Courier New', monospace;
+}
+
+:deep(.ai-markdown pre) {
+  overflow-x: auto;
+  padding: 10px;
+  border: 1px solid #2d4a6f;
+  border-radius: 4px;
+  background: #0b172a;
+  white-space: pre-wrap;
+}
+
+:deep(.ai-markdown pre code) {
+  padding: 0;
+  background: transparent;
+}
+
+:deep(.ai-markdown table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+:deep(.ai-markdown th),
+:deep(.ai-markdown td) {
+  padding: 5px 7px;
+  border: 1px solid #2d4a6f;
+  text-align: left;
+}
+
+:deep(.ai-markdown th) {
+  color: #bfdbfe;
+  background: rgba(15, 52, 96, 0.8);
 }
 
 .ai-sql-empty {
@@ -433,7 +556,7 @@ onBeforeUnmount(() => {
   margin: 10px 0;
   padding: 8px 10px;
   border-left: 3px solid #60a5fa;
-  font-size: 12px;
+  font-size: var(--ai-chat-font-size);
   color: #bfdbfe;
   background: rgba(15, 52, 96, 0.45);
 }
@@ -464,7 +587,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: var(--ai-chat-font-size);
   color: #bfdbfe;
 }
 
@@ -475,7 +598,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   color: #dbeafe;
   background: #0b172a;
-  font: 12px/1.6 Consolas, 'Courier New', monospace;
+  font: var(--ai-chat-font-size)/1.6 Consolas, 'Courier New', monospace;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -493,6 +616,12 @@ onBeforeUnmount(() => {
 
 :deep(.el-button) {
   border-color: #2d4a6f;
+}
+
+.quick-prompts :deep(.el-button),
+.ai-sql-composer :deep(.el-button),
+:deep(.el-textarea__inner) {
+  font-size: var(--ai-chat-font-size);
 }
 
 :deep(.el-textarea__inner) {

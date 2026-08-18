@@ -77,6 +77,16 @@ describe('AiSqlDrawer', () => {
     expect(wrapper.emitted('update:visible')).toEqual([[false]])
   })
 
+  it('抽屉使用右侧面板主题并统一聊天字号', () => {
+    const wrapper = mountDrawer()
+    const drawerStyle = wrapper.findComponent({ name: 'ElDrawer' }).attributes('style')
+    const panelStyle = wrapper.get('.ai-sql-panel').attributes('style')
+
+    expect(drawerStyle).toContain('--el-drawer-bg-color: #16213e')
+    expect(drawerStyle).toContain('--el-drawer-padding-primary: 0px')
+    expect(panelStyle).toContain('--ai-chat-font-size: 12px')
+  })
+
   it('流式展示文本，且仅为有效 SQL 提供应用操作', async () => {
     streamAiSqlMock.mockImplementation(async (_request: unknown, options: { onEvent: (event: AiSqlSseEvent) => void }) => {
       options.onEvent({ type: 'delta', data: { content: '可使用：' } })
@@ -93,6 +103,33 @@ describe('AiSqlDrawer', () => {
     expect(wrapper.text()).toContain('DELETE FROM t')
     await wrapper.get('[data-test="apply-ai-sql"]').trigger('click')
     expect(wrapper.emitted('apply-sql')).toEqual([['SELECT 1']])
+  })
+
+  it('流式完成后原位转为一条支持 Markdown 的历史回复', async () => {
+    streamAiSqlMock.mockImplementation(async (_request: unknown, options: { onEvent: (event: AiSqlSseEvent) => void }) => {
+      options.onEvent({ type: 'delta', data: { content: '**查询说明**\n\n- 仅返回有效记录\n\n```sql\nSELECT 1\n```' } })
+      options.onEvent({ type: 'done', data: { finishReason: 'stop' } })
+    })
+    const wrapper = mountDrawer([])
+
+    await submit(wrapper, '生成查询')
+    const completedMessages = wrapper.emitted('update:messages')?.at(-1)?.[0]
+    await wrapper.setProps({ messages: completedMessages })
+
+    expect(wrapper.findAll('.ai-message--assistant')).toHaveLength(1)
+    expect(wrapper.get('.ai-message--assistant strong').text()).toBe('查询说明')
+    expect(wrapper.get('.ai-message--assistant li').text()).toBe('仅返回有效记录')
+    expect(wrapper.get('.ai-message--assistant code').text()).toContain('SELECT 1')
+  })
+
+  it('Markdown 渲染不会把模型返回的原始 HTML 注入页面', () => {
+    const wrapper = mountDrawer([{
+      role: 'assistant',
+      content: '<img src=x onerror="alert(1)"> **安全内容**'
+    }])
+
+    expect(wrapper.find('.ai-message--assistant img').exists()).toBe(false)
+    expect(wrapper.get('.ai-message--assistant strong').text()).toBe('安全内容')
   })
 
   it('点击停止会中止仍在进行的请求', async () => {

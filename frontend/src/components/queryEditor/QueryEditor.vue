@@ -3,15 +3,15 @@
     <!-- 顶部工具栏 -->
     <div class="qe-toolbar">
       <div class="qe-toolbar-left">
-        <el-button size="small" type="primary" plain @click="aiDrawerVisible = true">
-          <el-icon><MagicStick /></el-icon>
-          AI 生成 SQL
-        </el-button>
       </div>
       <div class="qe-toolbar-center">
         <span class="mode-badge">画布&SQL</span>
       </div>
       <div class="qe-toolbar-right">
+        <el-button size="small" type="primary" plain @click="aiDrawerVisible = true">
+          <el-icon><MagicStick /></el-icon>
+          AI 生成 SQL
+        </el-button>
         <el-tooltip content="SQL转画布" placement="bottom">
           <el-button size="small" @click="handleSqlToCanvas" :disabled="!store.sqlText.trim()">
             <el-icon><Top /></el-icon> 画布
