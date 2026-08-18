@@ -2,7 +2,12 @@
   <div class="query-editor">
     <!-- 顶部工具栏 -->
     <div class="qe-toolbar">
-      <div class="qe-toolbar-left"></div>
+      <div class="qe-toolbar-left">
+        <el-button size="small" type="primary" plain @click="aiDrawerVisible = true">
+          <el-icon><MagicStick /></el-icon>
+          AI 生成 SQL
+        </el-button>
+      </div>
       <div class="qe-toolbar-center">
         <span class="mode-badge">画布&SQL</span>
       </div>
@@ -79,6 +84,7 @@
             </el-button>
           </div>
           <SqlEditor
+            ref="sqlEditorRef"
             v-model:sql="store.sqlText"
             @change="handleSqlChange"
             @validate="handleValidate"
@@ -168,6 +174,15 @@
     <el-dialog v-model="showResultDialog" title="查询结果" width="80%" top="5vh">
       <SqlResultViewer :result="executeResult" />
     </el-dialog>
+
+    <AiSqlDrawer
+      v-model:visible="aiDrawerVisible"
+      :data-source-id="store.dataSourceId"
+      :current-sql="store.sqlText"
+      :messages="aiMessages"
+      @update:messages="emit('update:aiMessages', $event)"
+      @apply-sql="applyAiSql"
+    />
   </div>
 </template>
 
@@ -176,27 +191,33 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useQueryEditorStore } from '@/stores/queryEditorStore'
 import { sqlApi } from '@/api/sqlApi'
+import type { AiSqlMessage } from '@/types/aiSql'
 import type { SqlExecuteResult } from '@/types/queryEditor'
 import MetadataPanel from './MetadataPanel.vue'
 import CanvasArea from './CanvasArea.vue'
 import SqlEditor from './SqlEditor.vue'
 import PropertyPanel from './PropertyPanel.vue'
 import SqlResultViewer from './SqlResultViewer.vue'
-import { Bottom, Top, ArrowRight, Minus, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import AiSqlDrawer from './AiSqlDrawer.vue'
+import { Bottom, Top, ArrowRight, ArrowLeft, Minus, ArrowUp, ArrowDown, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   initialSql?: string
   initialConfig?: any
   dataSourceId?: string
+  aiMessages: AiSqlMessage[]
 }>()
 
 const emit = defineEmits<{
   (e: 'change', config: any): void
+  (e: 'update:aiMessages', messages: AiSqlMessage[]): void
 }>()
 
 const store = useQueryEditorStore()
 const canvasRef = ref()
+const sqlEditorRef = ref<InstanceType<typeof SqlEditor>>()
 const showResultDialog = ref(false)
+const aiDrawerVisible = ref(false)
 const executeResult = ref<SqlExecuteResult | null>(null)
 const validating = ref(false)
 const executing = ref(false)
@@ -354,6 +375,13 @@ function stopResize() {
 }
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
+let autoSqlTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelAutoSqlGeneration() {
+  if (!autoSqlTimer) return
+  clearTimeout(autoSqlTimer)
+  autoSqlTimer = null
+}
 
 onMounted(() => {
   store.reset()
@@ -383,11 +411,8 @@ watch(() => store.focusCustomFields, (val) => {
 onUnmounted(() => {
   stopResize()
   if (syncTimer) clearTimeout(syncTimer)
+  cancelAutoSqlGeneration()
 })
-
-
-
-let autoSqlTimer: ReturnType<typeof setTimeout> | null = null
 
 // 监听画布变化，自动生成SQL
 watch(() => [
@@ -416,6 +441,13 @@ watch(() => store.sqlText, () => {
 
 function handleSqlChange() {
   emit('change', store.exportToQueryConfig())
+}
+
+function applyAiSql(sql: string) {
+  cancelAutoSqlGeneration()
+  sqlEditorRef.value?.replaceAllSql(sql)
+  store.setSql(sql)
+  ElMessage.success('AI SQL 已应用，请确认后保存')
 }
 
 async function handleValidate() {

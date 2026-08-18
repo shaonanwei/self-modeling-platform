@@ -115,7 +115,9 @@
                   :initial-sql="sqlConfig.sqlStatement"
                   :initial-config="currentQueryConfig"
                   :data-source-id="modelDataSource"
+                  :ai-messages="aiSqlMessages"
                   @change="handleQueryConfigChange"
+                  @update:ai-messages="handleAiSqlMessagesUpdate"
                 />
               </div>
             </div>
@@ -191,6 +193,7 @@ import {
   Key 
 } from '@element-plus/icons-vue'
 import type { ModelStep, InsertStepRequest } from '@/types/model'
+import type { AiSqlMessage } from '@/types/aiSql'
 import { modelApi } from '@/api/modelApi'
 import { sqlApi } from '@/api/sqlApi'
 import QueryEditor from '@/components/queryEditor/QueryEditor.vue'
@@ -215,6 +218,7 @@ const submitLoading = ref(false)
 const saveCloseLoading = ref(false)
 const nextLoading = ref(false)
 const queryEditorRef = ref<InstanceType<typeof QueryEditor>>()
+const aiSqlMessages = ref<AiSqlMessage[]>([])
 
 const currentStep = ref(0)
 const persistedStepId = ref<number | null>(null)
@@ -256,6 +260,7 @@ function clearFormData() {
   form.stepDesc = ''
   sqlConfig.sqlStatement = ''
   currentQueryConfig = null
+  aiSqlMessages.value = []
   currentStep.value = 0
   persistedStepId.value = null
   nextTick(() => formRef.value?.clearValidate())
@@ -300,6 +305,10 @@ function handleQueryConfigChange(config: any) {
   if (config?.sql) {
     sqlConfig.sqlStatement = config.sql
   }
+}
+
+function handleAiSqlMessagesUpdate(messages: AiSqlMessage[]) {
+  aiSqlMessages.value = messages
 }
 
 const handleCancel = () => {

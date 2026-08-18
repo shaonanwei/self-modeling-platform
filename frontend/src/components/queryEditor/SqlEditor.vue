@@ -6,6 +6,7 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import { replaceEditorText } from './sqlEditorCommands'
 
 self.MonacoEnvironment = {
   getWorker() {
@@ -73,6 +74,15 @@ watch(() => props.sql, (newVal) => {
     editor.setValue(newVal)
   }
 })
+
+function replaceAllSql(sql: string) {
+  if (!editor) return
+  replaceEditorText(editor, sql)
+  emit('update:sql', sql)
+  emit('change', sql)
+}
+
+defineExpose({ replaceAllSql })
 
 onBeforeUnmount(() => {
   editor?.dispose()
