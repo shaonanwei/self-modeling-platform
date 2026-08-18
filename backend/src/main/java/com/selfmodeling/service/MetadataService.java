@@ -43,6 +43,14 @@ public interface MetadataService {
     TableMetaDTO getTableInfo(String dataSourceId, String tableName);
 
     /**
+     * 获取指定表的只读结构信息（不包含行数统计）
+     * @param dataSourceId 数据源ID
+     * @param tableName 表名
+     * @return 表结构元信息
+     */
+    TableMetaDTO getTableStructure(String dataSourceId, String tableName);
+
+    /**
      * 获取指定表的字段列表
      * @param dataSourceId 数据源ID
      * @param tableName 表名
