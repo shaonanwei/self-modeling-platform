@@ -166,21 +166,29 @@ class AiSqlServiceImplTest {
 	}
 
 	@Test
-	void stopsAfterConfiguredToolRoundLimit() {
+	void finalizesWithoutToolsAfterConfiguredToolRoundLimit() {
 		when(qwenClient.stream(anyList(), anyList(), eq(true)))
 				.thenReturn(Flux.just(toolChunk("call_1", "list_tables", "{}"),
 						done("tool_calls")));
+		when(qwenClient.stream(anyList(), anyList(), eq(false)))
+				.thenReturn(Flux.just(doneWithContent(
+						"元数据不足，无法确定目标表，请补充表名。", "stop")));
 		when(toolExecutor.execute("list_tables", "{}", "master")).thenReturn("[]");
+		when(inspector.inspect("元数据不足，无法确定目标表，请补充表名。"))
+				.thenReturn(List.of());
 
 		StepVerifier.create(service.stream("1001", request()))
 				.expectNextCount(4)
-				.expectNextMatches(event -> "error".equals(event.type())
-						&& "TOOL_ROUND_LIMIT".equals(event.data().get("code")))
+				.expectNextMatches(event -> "delta".equals(event.type())
+						&& "元数据不足，无法确定目标表，请补充表名。"
+								.equals(event.data().get("content")))
+				.expectNextMatches(event -> "done".equals(event.type()))
 				.verifyComplete();
 
 		verify(qwenClient, times(4)).stream(anyList(), anyList(), eq(true));
+		verify(qwenClient).stream(anyList(), eq(List.of()), eq(false));
 		verify(toolExecutor, times(4)).execute("list_tables", "{}", "master");
-		verifyNoInteractions(inspector);
+		verify(inspector).inspect("元数据不足，无法确定目标表，请补充表名。");
 	}
 
 	@Test

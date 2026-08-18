@@ -94,19 +94,18 @@ public class AiSqlServiceImpl implements AiSqlService {
 	}
 
 	private Flux<AiSqlStreamEvent> executeRound(Conversation conversation, int round) {
-		if (round >= properties.getMaxToolRounds()) {
-			return Flux.just(AiSqlStreamEvent.error(
-					"TOOL_ROUND_LIMIT", "元数据查询轮次过多，请缩小问题范围", false));
-		}
+		boolean allowTools = round < properties.getMaxToolRounds();
 		return Flux.defer(() -> {
 			RoundState state = new RoundState();
 			Flux<AiSqlStreamEvent> currentRound = qwenClient.stream(
-						conversation.messages(), AiSqlPrompt.tools(), true)
+						conversation.messages(),
+						allowTools ? AiSqlPrompt.tools() : List.of(), allowTools)
 					.takeUntil(QwenStreamChunk::done)
 					.concatMap(chunk -> onChunk(chunk, state));
 			return currentRound
-					.concatWith(Flux.defer(() -> continueOrComplete(
-							conversation, round, state)))
+					.concatWith(Flux.defer(() -> allowTools
+							? continueOrComplete(conversation, round, state)
+							: completeWithoutTools(state)))
 					.onErrorResume(error -> Flux.just(mapError(error)));
 		});
 	}
@@ -140,6 +139,14 @@ public class AiSqlServiceImpl implements AiSqlService {
 								.thenMany(Flux.empty())))
 				.concatWith(Flux.defer(() -> executeRound(
 						conversation.withToolResults(state.content(), calls, results), round + 1)));
+	}
+
+	private Flux<AiSqlStreamEvent> completeWithoutTools(RoundState state) {
+		List<CompletedToolCall> calls = state.completeCalls();
+		if (!"stop".equals(state.finishReason()) || !calls.isEmpty()) {
+			throw protocolError();
+		}
+		return finalEvents(state.content());
 	}
 
 	private String toolStatus(String toolName) {
