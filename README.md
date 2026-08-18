@@ -41,7 +41,39 @@ Copy-Item backend/config/datasource-local.example.yml backend/config/datasource-
 
 然后只在本机填写数据库用户名和密码。不要提交该文件，也不要把凭证发送到聊天、终端日志或提交消息中。后端从 `backend` 目录启动时，才会正确加载 `./config/datasource-local.yml`。当前 MySQL 和 PostgreSQL 账号仅用于本地测试，不要求轮换；生产环境必须另建最小权限应用账号，不要使用数据库所有者或管理员账号执行用户 SQL。
 
-### 3. 启动后端
+### 3. AI SQL 助手配置（可选）
+
+AI SQL 助手默认关闭。推荐在启动后端的同一个 PowerShell 会话中通过环境变量启用，并以安全输入方式读取通义千问 API Key，避免密钥出现在命令历史中：
+
+```powershell
+$env:AI_SQL_ENABLED = "true"
+$secureKey = Read-Host "请输入通义千问 API Key" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
+try {
+  $env:QWEN_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+}
+```
+
+可按需设置兼容接口地址和模型；未设置时使用应用配置中的默认值：
+
+```powershell
+$env:QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:QWEN_MODEL = "qwen-plus"
+```
+
+API Key 所属地域必须与 `QWEN_BASE_URL` 匹配。修改环境变量后需要重启后端才能生效。也可以复制本地覆盖模板，并在生成的 `backend/config/ai-local.yml` 中将 `enabled` 改为 `true`：
+
+```powershell
+Copy-Item backend/config/ai-local.example.yml backend/config/ai-local.yml
+```
+
+该文件已被 Git 忽略，但环境变量仍是推荐方式；不要把 API Key 粘贴到 Issue、聊天、日志或 Git 提交中。
+
+AI SQL 助手只读取表名、字段、类型、注释、主键和关联关系等元数据，不读取业务数据行，也没有 SQL 执行工具。AI 生成的 SQL 只有通过后端只读安全校验后才可由用户手动应用到编辑器，应用操作不会自动执行或保存 SQL。
+
+### 4. 启动后端
 
 ```powershell
 Set-Location backend
@@ -50,7 +82,7 @@ mvn spring-boot:run
 
 后端默认仅监听 `http://127.0.0.1:8080`
 
-### 4. 启动前端
+### 5. 启动前端
 
 ```bash
 cd frontend
@@ -60,7 +92,7 @@ npm run dev
 
 前端默认运行在 `http://localhost:5173`
 
-### 5. 管理员账号
+### 6. 管理员账号
 
 全新本地数据库执行 `schema-mysql.sql` 后，可以使用以下开发账号登录：
 

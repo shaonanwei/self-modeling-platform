@@ -4,11 +4,8 @@
  */
 import axios from 'axios'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { getAccessToken, clearTokens } from './auth'
-import router from '../router'
-
-// 防止并发 401 时多次跳转登录页
-let isRedirectingToLogin = false
+import { getAccessToken } from './auth'
+import { handleUnauthorized } from './handleUnauthorized'
 
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -41,15 +38,8 @@ service.interceptors.response.use(
   },
   async (error: AxiosError<{ message?: string }>) => {
     // 处理 401 未授权
-    if (error.response?.status === 401 && !isRedirectingToLogin) {
-      isRedirectingToLogin = true
-      clearTokens()
-      // 使用 replace 避免用户点击浏览器后退回到原页面
-      router.replace({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
-      // 延迟重置标志位，避免同批次请求重复跳转
-      setTimeout(() => {
-        isRedirectingToLogin = false
-      }, 1000)
+    if (error.response?.status === 401) {
+      handleUnauthorized()
     }
 
     // 提取后端返回的错误信息

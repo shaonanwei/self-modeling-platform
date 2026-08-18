@@ -77,3 +77,25 @@ test('SQL save only updates the persisted step config', () => {
   assert.match(handler, /modelApi\.updateStep\(props\.modelId, persistedStepId\.value, updateData\)/)
   assert.doesNotMatch(handler, /modelApi\.(addStep|insertStep)/)
 })
+
+test('handleSubmit remains the only SQL tab path that updates a persisted step', () => {
+  const script = getSourceBlock('<script setup', '</script>')
+  const basicSave = getSourceBlock('const saveBasicInfo', 'const handleNext')
+  const sqlSave = getSourceBlock('const handleSubmit', '</script>')
+  const updateCalls = [...script.matchAll(/modelApi\.updateStep/g)]
+
+  assert.equal(updateCalls.length, 2, '仅基础信息保存和 SQL 提交可以更新步骤')
+  assert.equal([...basicSave.matchAll(/modelApi\.updateStep/g)].length, 1)
+  assert.equal([...sqlSave.matchAll(/modelApi\.updateStep/g)].length, 1)
+})
+
+test('AI SQL messages survive tab navigation and clear only with the full dialog session', () => {
+  const sqlTab = getSourceBlock('<div key="step-1"', '</transition>')
+  const clearForm = getSourceBlock('function clearFormData', 'function fillForm')
+  const previousStep = getSourceBlock('const handlePrev', 'const handleSubmit')
+
+  assert.match(sqlTab, /:ai-messages="aiSqlMessages"/)
+  assert.match(sqlTab, /@update:ai-messages="handleAiSqlMessagesUpdate"/)
+  assert.match(clearForm, /aiSqlMessages\.value\s*=\s*\[\]/)
+  assert.doesNotMatch(previousStep, /aiSqlMessages/)
+})

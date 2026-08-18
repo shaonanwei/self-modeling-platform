@@ -166,7 +166,7 @@ public class MetadataServiceImpl implements MetadataService {
     }
 
     @Override
-    public TableMetaDTO getTableInfo(String dataSourceId, String tableName) {
+    public TableMetaDTO getTableStructure(String dataSourceId, String tableName) {
         TableMetaDTO tableMeta = new TableMetaDTO();
         tableMeta.setTableName(tableName);
         JdbcTemplate jdbcTemplate = getJdbcTemplateByDataSourceId(dataSourceId);
@@ -185,12 +185,23 @@ public class MetadataServiceImpl implements MetadataService {
                 DatabaseMetaData metaData = connection.getMetaData();
                 String catalog = getConnectionCatalog(metaData, dataSourceId);
 
-                // 获取表基本信息
-                try (ResultSet rs = metaData.getTables(catalog, null, tableName, null)) {
-                    if (rs.next()) {
+                String tablePattern = escapeMetadataPattern(metaData, tableName);
+                boolean exactTableFound = false;
+                // JDBC 元数据参数是搜索 pattern，必须转义并再次核对返回表名。
+                try (ResultSet rs = metaData.getTables(catalog, null, tablePattern, null)) {
+                    while (rs.next()) {
+                        if (!tableName.equals(rs.getString("TABLE_NAME"))) {
+                            continue;
+                        }
                         tableMeta.setTableComment(rs.getString("REMARKS"));
                         tableMeta.setTableType(rs.getString("TABLE_TYPE"));
+                        tableMeta.setSchemaName(rs.getString("TABLE_SCHEM"));
+                        exactTableFound = true;
+                        break;
                     }
+                }
+                if (!exactTableFound) {
+                    return tableMeta;
                 }
 
                 // 获取字段信息
@@ -202,18 +213,22 @@ public class MetadataServiceImpl implements MetadataService {
                 // 获取索引信息
                 tableMeta.setIndexes(getIndexes(metaData, catalog, tableName));
 
-                // 获取行数统计（异步，不阻塞）
-                try {
-                    Long rowCount = getTableRowCount(dataSourceId, tableName);
-                    tableMeta.setRowCount(rowCount);
-                } catch (Exception e) {
-                    log.warn("获取行数失败: {}", e.getMessage());
-                }
             }
         } catch (SQLException e) {
             log.error("获取表信息失败: dataSourceId={}, tableName={}", dataSourceId, tableName, e);
         }
 
+        return tableMeta;
+    }
+
+    @Override
+    public TableMetaDTO getTableInfo(String dataSourceId, String tableName) {
+        TableMetaDTO tableMeta = getTableStructure(dataSourceId, tableName);
+        try {
+            tableMeta.setRowCount(getTableRowCount(dataSourceId, tableName));
+        } catch (Exception e) {
+            log.warn("获取表行数失败: {}", e.getMessage());
+        }
         return tableMeta;
     }
 
@@ -236,8 +251,12 @@ public class MetadataServiceImpl implements MetadataService {
                 DatabaseMetaData metaData = connection.getMetaData();
                 String catalog = getConnectionCatalog(metaData, dataSourceId);
 
-                try (ResultSet rs = metaData.getColumns(catalog, null, tableName, "%")) {
+                String tablePattern = escapeMetadataPattern(metaData, tableName);
+                try (ResultSet rs = metaData.getColumns(catalog, null, tablePattern, "%")) {
                     while (rs.next()) {
+                        if (!tableName.equals(rs.getString("TABLE_NAME"))) {
+                            continue;
+                        }
                         ColumnMetaDTO column = new ColumnMetaDTO();
                         column.setColumnName(rs.getString("COLUMN_NAME"));
                         column.setColumnType(rs.getString("TYPE_NAME"));
@@ -272,6 +291,20 @@ public class MetadataServiceImpl implements MetadataService {
 
         return columns;
     }
+
+	/**
+	 * 转义 JDBC 元数据搜索 pattern 中的通配符。
+	 */
+	private String escapeMetadataPattern(DatabaseMetaData metaData, String value)
+			throws SQLException {
+		String escape = metaData.getSearchStringEscape();
+		if (escape == null || escape.isEmpty()) {
+			throw new SQLException("数据库未提供元数据搜索转义符");
+		}
+		return value.replace(escape, escape + escape)
+				.replace("%", escape + "%")
+				.replace("_", escape + "_");
+	}
 
     @Override
     public List<TableMetaDTO> searchMetadata(String dataSourceId, String keyword, String searchType) {
