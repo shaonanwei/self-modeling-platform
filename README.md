@@ -1,414 +1,257 @@
 # Self-Service Modeling Platform（自助建模平台）
 
-可视化业务流程建模工具，支持用户通过图形化界面创建、配置和管理业务流程模型，自动生成 SQL 并执行。
+面向数据建模与 SQL 探索的全栈应用，支持模型及步骤管理、数据源元数据浏览、可视化 SQL 构建、只读查询预览和 AI SQL 辅助生成。
+
+AI SQL 生成的内容必须经过后端只读安全校验，并由用户手动应用到编辑器；系统不会自动执行或保存 AI 生成的 SQL。
+
+## 主要功能
+
+- 模型管理：创建、编辑、复制、启停和删除模型。
+- 步骤编排：管理开始、任务、网关、子流程和结束节点。
+- 元数据浏览：查看 MySQL、PostgreSQL、SQLite 数据源中的表、字段和关联信息。
+- SQL 编辑：支持 Monaco Editor、画布配置与 SQL 双向转换。
+- 安全预览：只允许单条只读 `SELECT`，限制结果行数和查询时间。
+- AI SQL 助手：通过通义千问流式生成 SQL，支持安全 Markdown 展示和人工确认应用。
 
 ## 技术栈
 
 | 层级 | 技术选型 |
 |------|----------|
-| 前端 | Vue 3 + Vite + TypeScript + Element Plus + Vue Flow |
-| 后端 | Spring Boot 4.x + MyBatis + Sa-Token |
-| 数据库 | MySQL（主）+ SQLite + PostgreSQL |
-| 认证 | Sa-Token（会话认证） |
-| 分页 | PageHelper |
+| 前端 | Vue 3、TypeScript、Vite 5、Element Plus、Vue Flow、Monaco Editor、Pinia |
+| 后端 | Java 21、Spring Boot 4、MyBatis、Sa-Token、Dynamic Datasource |
+| 数据库 | MySQL（主数据源）、PostgreSQL、SQLite |
+| AI | 通义千问 OpenAI 兼容接口、SSE 流式响应、Markdown-it |
 
 ## 快速开始
 
-### 前置条件
+### 1. 环境要求
 
 - JDK 21+
-- Maven 3.6+
-- Node.js 18+
+- Maven 3.6.3+
+- Node.js 20.19+
 - MySQL 8.0+
+- PostgreSQL 和 SQLite 按需使用
 
-### 1. 数据库初始化
+### 2. 初始化 MySQL
+
+在项目根目录执行：
 
 ```bash
-# 创建数据库
-mysql -u root -p -e "CREATE DATABASE self_modeling DEFAULT CHARACTER SET utf8mb4;"
-
-# 执行建表脚本
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS self_modeling DEFAULT CHARACTER SET utf8mb4;"
 mysql -u root -p self_modeling < backend/src/main/resources/schema-mysql.sql
 ```
 
-### 2. 后端配置
+第二条命令适用于 Bash 或 Windows Command Prompt。也可以在 MySQL 客户端中选择 `self_modeling` 后执行 `schema-mysql.sql`。
 
-`backend/config/datasource-local.yml` 在克隆仓库后默认不存在；它是仅供本机使用、被 Git 忽略的数据源覆盖文件。先在项目根目录执行：
+### 3. 配置数据源
+
+复制本地配置模板：
 
 ```powershell
 Copy-Item backend/config/datasource-local.example.yml backend/config/datasource-local.yml
 ```
 
-然后只在本机填写数据库用户名和密码。不要提交该文件，也不要把凭证发送到聊天、终端日志或提交消息中。后端从 `backend` 目录启动时，才会正确加载 `./config/datasource-local.yml`。当前 MySQL 和 PostgreSQL 账号仅用于本地测试，不要求轮换；生产环境必须另建最小权限应用账号，不要使用数据库所有者或管理员账号执行用户 SQL。
+编辑 `backend/config/datasource-local.yml`，至少设置主数据源地址和本机凭证：
 
-### 3. AI SQL 助手配置（可选）
-
-AI SQL 助手默认关闭。推荐在启动后端的同一个 PowerShell 会话中通过环境变量启用，并以安全输入方式读取通义千问 API Key，避免密钥出现在命令历史中：
-
-```powershell
-$env:AI_SQL_ENABLED = "true"
-$secureKey = Read-Host "请输入通义千问 API Key" -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
-try {
-  $env:QWEN_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-} finally {
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
-}
+```yaml
+spring:
+  datasource:
+    dynamic:
+      datasource:
+        master:
+          url: jdbc:mysql://localhost:3306/self_modeling
+          username: your_mysql_username
+          password: your_mysql_password
 ```
 
-可按需设置兼容接口地址和模型；未设置时使用应用配置中的默认值：
+如需 PostgreSQL，在同一文件中配置 `postgres.url`、`postgres.username` 和 `postgres.password`。不使用模板中的 PostgreSQL 覆盖项时，应将该块删除，不要保留未解析的 `${POSTGRES_*}` 占位符。
 
-```powershell
-$env:QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-$env:QWEN_MODEL = "qwen-plus"
-```
+`datasource-local.yml` 已被 Git 忽略，仅供本机使用。不要提交该文件，也不要把数据库凭证写入日志、Issue 或提交消息。
 
-API Key 所属地域必须与 `QWEN_BASE_URL` 匹配。修改环境变量后需要重启后端才能生效。也可以复制本地覆盖模板，并在生成的 `backend/config/ai-local.yml` 中将 `enabled` 改为 `true`：
+### 4. 配置 AI SQL 助手（可选）
+
+AI SQL 默认关闭。复制本地配置模板：
 
 ```powershell
 Copy-Item backend/config/ai-local.example.yml backend/config/ai-local.yml
 ```
 
-该文件已被 Git 忽略，但环境变量仍是推荐方式；不要把 API Key 粘贴到 Issue、聊天、日志或 Git 提交中。
+编辑 `backend/config/ai-local.yml`：
 
-AI SQL 助手只读取表名、字段、类型、注释、主键和关联关系等元数据，不读取业务数据行，也没有 SQL 执行工具。AI 生成的 SQL 只有通过后端只读安全校验后才可由用户手动应用到编辑器，应用操作不会自动执行或保存 SQL。
+```yaml
+app:
+  ai:
+    sql:
+      enabled: true
+      api-key: your_qwen_api_key
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model: qwen-plus
+```
 
-### 4. 启动后端
+该文件同样已被 Git 忽略。生产环境应通过密钥管理服务或 `QWEN_API_KEY` 环境变量注入密钥，不要将真实 API Key 提交到仓库。
+
+API Key 所属地域必须与 DashScope 接口地域一致。当前 Qwen 客户端未配置应用层代理，默认直接访问上述地址。修改配置后需要重启后端。
+
+### 5. 启动后端
+
+必须从 `backend` 目录启动，应用才能加载 `./config/*.yml` 本地覆盖文件：
 
 ```powershell
 Set-Location backend
 mvn spring-boot:run
 ```
 
-后端默认仅监听 `http://127.0.0.1:8080`
+后端默认仅监听 `http://127.0.0.1:8080`。
 
-### 5. 启动前端
+### 6. 启动前端
 
-```bash
-cd frontend
-npm install
+新开一个终端，在项目根目录执行：
+
+```powershell
+Set-Location frontend
+npm ci
 npm run dev
 ```
 
-前端默认运行在 `http://localhost:5173`
+前端默认运行在 `http://localhost:5173`，Vite 会将 `/api` 代理到 `http://localhost:8080`。
 
-### 6. 管理员账号
+### 7. 本地开发账号
 
-全新本地数据库执行 `schema-mysql.sql` 后，可以使用以下开发账号登录：
+全新数据库执行 `schema-mysql.sql` 后，可使用以下账号登录：
 
 - 用户名：`admin`
 - 初始密码：`admin123`
 
-初始化脚本保存的是 BCrypt 哈希，不是明文密码。该固定账号仅供本地开发；生产环境必须单独创建管理员并使用独立强密码。`INSERT IGNORE` 不会覆盖已有数据库中的管理员记录。
+初始化脚本仅保存 BCrypt 哈希。该账号只用于本地开发，生产环境必须创建独立管理员并修改默认凭证。
 
-## Windows 前后端重启
+## 配置参考
 
-以下命令均使用 PowerShell，并从项目根目录开始执行。重启前请确保 MySQL、PostgreSQL 等外部数据库服务已经启动。
+本地开发可以使用 `backend/config/*.yml` 覆盖文件；部署环境建议使用环境变量。
 
-### 1. 检查运行环境
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `SERVER_ADDRESS` | `127.0.0.1` | 后端监听地址 |
+| `MYSQL_URL` | `jdbc:mysql://localhost:3306/test` | MySQL JDBC 地址；按快速开始应改为 `self_modeling` |
+| `MYSQL_USERNAME` | 空 | MySQL 用户名 |
+| `MYSQL_PASSWORD` | 空 | MySQL 密码 |
+| `POSTGRES_URL` | `jdbc:postgresql://localhost:5432/test?currentSchema=public` | PostgreSQL JDBC 地址 |
+| `POSTGRES_USERNAME` | 空 | PostgreSQL 用户名 |
+| `POSTGRES_PASSWORD` | 空 | PostgreSQL 密码 |
+| `AI_SQL_ENABLED` | `false` | 是否启用 AI SQL 助手 |
+| `QWEN_API_KEY` | 空 | 通义千问 API Key |
+| `QWEN_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容接口基础地址 |
+| `QWEN_MODEL` | `qwen-plus` | 使用的模型 |
 
-确认 Java、Maven、Node.js 和 npm 均已加入 `PATH`：
+## AI SQL 工作方式与安全边界
 
-```powershell
-java -version
-mvn -version
-node --version
-npm --version
-```
+- AI SQL 接口需要有效的 `Authorization` 令牌。
+- 同一用户默认只允许一个并发请求，请求超时为 60 秒。
+- 模型最多进行 4 轮元数据工具调用，超出后会结束本次生成。
+- 工具只提供经过授权的表名、字段、类型、注释、主键和关联信息，不向模型提供业务数据行。
+- 模型没有 SQL 执行、保存或数据修改工具。
+- 最终 SQL 必须通过后端只读门禁，仅接受一条可解析的 `SELECT`，包括 `WITH ... SELECT`。
+- 修改型 DML、DDL、堆叠语句、文件读取、延时及其他危险函数会被拒绝。
+- 用户点击应用后只会更新编辑器内容，不会自动保存或执行 SQL。
+- AI 回复支持 Markdown，原始 HTML 默认禁用。
 
-其中 `java -version` 以及 `mvn -version` 中显示的 Java 版本应为 21 或更高版本。
+## SQL 预览限制
 
-### 2. 停止旧服务
+- 同步预览默认返回 50 行，后端最多返回 1000 行。
+- 查询超时为 60 秒，数据库连接会设置为只读。
+- 校验使用数据库 `EXPLAIN` 或 SQLite `EXPLAIN QUERY PLAN`。
+- 生产环境执行用户 SQL 的数据库账号必须为最小权限只读账号，不得使用数据库所有者或管理员账号。
 
-优先在原来的前端和后端终端中分别按 `Ctrl+C`，等待进程退出。
+## API 概览
 
-如果原终端已经关闭或服务在后台运行，可在项目根目录执行以下命令。脚本只会停止已确认属于当前项目的 8080/5173 监听进程；其他程序即使占用了相同端口也不会被停止。Spring Boot 的 Java 进程有时会把 classpath 放在临时 `.argfile` 中，下面的脚本会额外检查该文件，避免误把本项目进程识别为未知进程。
+除验证码、登录和预留的刷新入口外，业务接口都需要有效的 `Authorization` 令牌。
 
-```powershell
-$projectRoot = (Resolve-Path .).Path
-$ports = 8080, 5173
-$connections = Get-NetTCPConnection -State Listen -ErrorAction Stop |
-    Where-Object { $_.LocalPort -in $ports }
-$processIds = $connections |
-    Select-Object -ExpandProperty OwningProcess -Unique
-
-function Test-ProjectProcess {
-    param($Process, [string]$ProjectRoot)
-
-    if (-not $Process.CommandLine) {
-        return $false
-    }
-
-    if ($Process.CommandLine.IndexOf(
-        $ProjectRoot,
-        [System.StringComparison]::OrdinalIgnoreCase
-    ) -ge 0) {
-        return $true
-    }
-
-    # Spring Boot 可能使用 @C:\...\spring-boot-*.argfile 隐藏完整 classpath。
-    $argFileMatch = [regex]::Match(
-        $Process.CommandLine,
-        '@(?<path>\S+\.argfile)'
-    )
-    if (-not $argFileMatch.Success) {
-        return $false
-    }
-
-    $argumentFile = $argFileMatch.Groups['path'].Value
-    if (-not (Test-Path -LiteralPath $argumentFile)) {
-        return $false
-    }
-
-    $argumentText = Get-Content -Raw -LiteralPath $argumentFile
-    $normalizedArgumentText = $argumentText -replace '\\\\', '\'
-    return $normalizedArgumentText.IndexOf(
-        $ProjectRoot,
-        [System.StringComparison]::OrdinalIgnoreCase
-    ) -ge 0
-}
-
-foreach ($processId in $processIds) {
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId"
-    $belongsToProject = Test-ProjectProcess $process $projectRoot
-
-    if ($belongsToProject) {
-        Stop-Process -Id $processId -Force
-        Write-Host "已停止项目进程 $processId"
-    } else {
-        Write-Warning "未停止进程 $processId：命令行不属于当前项目"
-    }
-}
-```
-
-如果查询进程时提示权限不足，请使用管理员 PowerShell 重新执行上述兜底命令。不要直接终止未经命令行归属确认的端口进程。
-
-### 3. 启动后端
-
-打开一个新的 PowerShell 终端，在项目根目录执行：
-
-```powershell
-Set-Location backend
-mvn spring-boot:run
-```
-
-日志出现 `Started SelfModelingApplication` 表示后端已经就绪，默认地址为 `http://127.0.0.1:8080`。
-
-如果刚执行过 `git pull`，或本次修改删除、移动了 Java 类（尤其是配置类），先清理旧的 `target` 输出再启动：
-
-```powershell
-Set-Location backend
-mvn clean spring-boot:run
-```
-
-这是为避免 Maven 保留已删除类的 `.class` 文件，导致启动时报已删除类的 `ClassNotFoundException`。普通重启且没有删除或移动 Java 类时，继续使用较快的 `mvn spring-boot:run` 即可。
-
-### 4. 启动前端
-
-再打开一个新的 PowerShell 终端，在项目根目录执行：
-
-```powershell
-Set-Location frontend
-npm run dev -- --host 127.0.0.1
-```
-
-日志出现 `VITE ... ready` 表示前端已经就绪，访问地址为 `http://127.0.0.1:5173/`。正常重启不需要重复执行 `npm install`；只有首次安装或依赖发生变化时才需要重新安装依赖。若后端提示“8080 已被占用”，先再次运行上面的停止脚本，确认旧后端已退出后再启动；不要直接终止未确认归属的 Java 进程。
-
-### 5. 健康检查
-
-两个服务均显示就绪后，在另一个 PowerShell 终端执行：
-
-```powershell
-$frontend = Invoke-WebRequest `
-    -Uri 'http://127.0.0.1:5173/' `
-    -UseBasicParsing `
-    -TimeoutSec 15
-$backend = Invoke-WebRequest `
-    -Uri 'http://127.0.0.1:8080/api/v1/auth/captcha' `
-    -UseBasicParsing `
-    -TimeoutSec 15
-
-[pscustomobject]@{
-    FrontendStatus = $frontend.StatusCode
-    FrontendContentType = $frontend.Headers['Content-Type']
-    BackendStatus = $backend.StatusCode
-    BackendContentType = $backend.Headers['Content-Type']
-}
-```
-
-预期前端和后端的状态码均为 `200`；前端内容类型为 HTML，后端验证码接口内容类型为 JSON。
-
-## Nginx 同域部署
-
-生产环境使用同一个域名提供前端页面和 `/api`，由 Nginx 将 `/api` 反向代理到 Spring Boot。浏览器始终访问相对路径 `/api/v1/...`，因此不需要 CORS 响应头，后端也不再维护来源白名单。
-
-```powershell
-Set-Location frontend
-npm ci
-npm run build
-```
-
-将 `frontend/dist` 的内容部署到 Nginx 站点目录，并以 `deploy/nginx.conf.example` 为模板配置站点。示例默认把 `/api` 代理到同机的 `127.0.0.1:8080`，同时为 Vue Router 提供 `index.html` 回退。
-
-Spring Boot 默认只监听回环地址。如果 Nginx 与后端不在同一主机，可通过 `SERVER_ADDRESS` 改为受保护的内网地址，但不要把 8080 直接暴露到公网。开发环境继续使用 Vite 内置的 `/api` 代理，无需 Nginx。
+| 模块 | 基础路径 | 主要能力 |
+|------|----------|----------|
+| 认证 | `/api/v1/auth` | 验证码、登录、登出、当前用户信息；`POST /refresh` 当前尚未实现 |
+| 模型 | `/api/v1/models` | 模型增删改查、复制、状态变更 |
+| 步骤 | `/api/v1/models/{modelId}/steps` | 步骤编排、排序、执行和结果读取 |
+| 元数据 | `/api/v1/metadata` | 数据源检查、表和字段查询、数据预览 |
+| SQL | `/api/v1/sql` | SQL 校验、预览、解析、生成和关联推荐 |
+| AI SQL | `/api/v1/ai/sql` | `POST /chat`，返回 `text/event-stream` 流式事件 |
 
 ## 项目结构
 
-```
+```text
 self-modeling-platform/
-├── deploy/
-│   └── nginx.conf.example            # Nginx 同域代理模板
-├── backend/                          # Spring Boot 后端
+├── backend/
 │   ├── config/
-│   │   └── datasource-local.example.yml # 本地数据源覆盖模板
+│   │   ├── datasource-local.example.yml  # 本地数据源模板
+│   │   └── ai-local.example.yml          # 本地 AI 配置模板
 │   ├── src/main/java/com/selfmodeling/
-│   │   ├── config/                   # 配置类
-│   │   ├── controller/               # REST API 控制器
-│   │   ├── dto/                      # 数据传输对象
-│   │   ├── entity/                   # 数据库实体
-│   │   ├── exception/                # 全局异常处理
-│   │   ├── mapper/                   # MyBatis Mapper
-│   │   ├── request/                  # 请求体 DTO
-│   │   └── service/impl/             # 业务逻辑实现
-│   └── src/main/resources/
-│       ├── application.yml           # 应用配置
-│       ├── datasource.yml            # 数据源配置
-│       ├── schema-mysql.sql          # 建表 SQL
-│       └── mapper/                   # MyBatis XML
-│
-└── frontend/                         # Vue 3 前端
-    ├── src/
-    │   ├── api/                      # API 封装
-    │   ├── components/               # 组件
-    │   ├── layouts/                  # 布局
-    │   ├── pages/                    # 页面
-    │   ├── router/                   # 路由配置
-    │   ├── stores/                   # Pinia 状态管理
-    │   ├── types/                    # TypeScript 类型
-    │   └── utils/                    # 工具函数
-    └── package.json
+│   │   ├── config/                       # Spring 与 AI 配置
+│   │   ├── controller/                   # REST 和 SSE 控制器
+│   │   ├── dto/                          # 数据传输对象
+│   │   ├── entity/                       # 数据库实体
+│   │   ├── mapper/                       # MyBatis Mapper
+│   │   └── service/                      # 建模、SQL、元数据和 AI 服务
+│   ├── src/main/resources/
+│   │   ├── application.yml
+│   │   ├── datasource.yml
+│   │   ├── schema-mysql.sql
+│   │   └── mapper/
+│   └── pom.xml
+├── frontend/
+│   ├── src/
+│   │   ├── api/                          # API 与 SSE 解码
+│   │   ├── components/                   # 建模、查询编辑器和 AI 抽屉
+│   │   ├── pages/                        # 页面
+│   │   ├── router/                       # 路由
+│   │   ├── stores/                       # Pinia 状态
+│   │   └── types/                        # TypeScript 类型
+│   ├── tests/
+│   └── package.json
+├── deploy/
+│   └── nginx.conf.example                # Nginx 同域代理模板
+└── README.md
 ```
 
-## API 文档
+## 构建与验证
 
-所有模型、步骤、元数据和 SQL 数据接口均需要有效的 `Authorization` 令牌；验证码、登录和刷新令牌入口除外。
-
-### 认证 `/api/v1/auth`
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/auth/login` | 用户登录 |
-| POST | `/api/v1/auth/logout` | 用户登出 |
-| GET | `/api/v1/auth/captcha` | 获取验证码 |
-| POST | `/api/v1/auth/refresh` | 刷新令牌（接口已预留，当前尚未实现） |
-| GET | `/api/v1/auth/userinfo` | 获取当前用户信息 |
-
-### 模型 `/api/v1/models`
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/models` | 分页查询模型列表 |
-| GET | `/api/v1/models/{id}` | 获取模型详情 |
-| POST | `/api/v1/models` | 创建模型 |
-| PUT | `/api/v1/models/{id}` | 更新模型 |
-| DELETE | `/api/v1/models/{id}` | 删除模型 |
-| PATCH | `/api/v1/models/{id}/status` | 更新模型状态 |
-| POST | `/api/v1/models/{id}/copy` | 复制模型 |
-
-### 步骤 `/api/v1/models/{modelId}/steps`
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/models/{modelId}/steps` | 获取步骤列表 |
-| GET | `/api/v1/models/{modelId}/steps/{stepId}` | 获取步骤详情 |
-| POST | `/api/v1/models/{modelId}/steps` | 添加步骤 |
-| POST | `/api/v1/models/{modelId}/steps/insert` | 在指定步骤后插入步骤 |
-| PUT | `/api/v1/models/{modelId}/steps/{stepId}` | 更新步骤 |
-| DELETE | `/api/v1/models/{modelId}/steps/{stepId}` | 删除步骤 |
-| PATCH | `/api/v1/models/{modelId}/steps/{stepId}/reorder` | 重排步骤 |
-| PATCH | `/api/v1/models/{modelId}/steps/{stepId}/swap` | 交换两个步骤 |
-| GET | `/api/v1/models/{modelId}/steps/tree` | 获取步骤树 |
-| POST | `/api/v1/models/{modelId}/steps/{stepId}/execute` | 异步执行步骤 |
-| GET | `/api/v1/models/{modelId}/steps/{stepId}/result` | 分页读取步骤结果 |
-
-### 元数据 `/api/v1/metadata`
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/metadata/datasources` | 获取数据源列表 |
-| GET | `/api/v1/metadata/datasources/{dataSourceId}/check` | 检查数据源连接 |
-| GET | `/api/v1/metadata/tables` | 获取表列表 |
-| GET | `/api/v1/metadata/tables/{tableName}` | 获取表详情 |
-| GET | `/api/v1/metadata/tables/{tableName}/columns` | 获取字段列表 |
-| GET | `/api/v1/metadata/tables/{tableName}/count` | 获取表行数 |
-| GET | `/api/v1/metadata/tables/{tableName}/preview` | 预览表数据 |
-| GET | `/api/v1/metadata/search` | 搜索表或字段 |
-
-### SQL `/api/v1/sql`
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/sql/validate` | 校验只读 SQL |
-| POST | `/api/v1/sql/execute` | 同步预览 SQL 结果 |
-| POST | `/api/v1/sql/parse` | 将 SQL 解析为画布配置 |
-| POST | `/api/v1/sql/generate` | 从画布配置生成 SQL |
-| GET | `/api/v1/sql/smart-recommend` | 获取建模推荐 |
-| GET | `/api/v1/sql/relations/{tableName}` | 获取表关联关系 |
-
-## 核心功能
-
-### 步骤类型
-
-| 类型 | 说明 |
-|------|------|
-| start | 开始节点 |
-| end | 结束节点 |
-| task | 任务节点 |
-| gateway | 网关节点（条件分支） |
-| subprocess | 子流程节点 |
-
-### SQL 编辑与预览限制
-
-- SQL 编辑器支持输入、最终保存和重新编辑回显；“保存&关闭”允许保存空白草稿。
-- 校验、最终保存和执行只接受一条可解析的只读 `SELECT`，包括 `WITH ... SELECT`。
-- 修改型 DML、DDL、堆叠语句、文件读取和延时函数会被拒绝。
-- 同步预览默认返回 50 行，后端最多返回 1000 行，查询超时为 60 秒。
-
-### Token 配置
-
-- Token 有效期：30 天
-- 活跃超时：30 分钟无操作自动过期
-- 支持多端同时登录
-
-## 安全发布门禁
-
-当前集中开发阶段可以只运行与改动直接相关的测试和必要编译；新增功能稳定后、准备正式发布时，再执行下面的完整门禁。
-
-每次准备发布时，执行后端完整测试、后端打包和前端生产构建；任何命令失败都应阻止发布：
+后端：
 
 ```powershell
 Set-Location backend
 mvn test
-mvn package -DskipTests
+mvn clean package -DskipTests
+```
 
-Set-Location ../frontend
+前端：
+
+```powershell
+Set-Location frontend
 npm ci
+npm run test:run
 npm run build
 ```
 
-使用本地数据源配置或环境变量启动后端后，逐项完成以下 API 冒烟检查：
+构建和单元测试通过不代表真实通义千问服务已经连通。启用 AI SQL 后，还需要使用有效 API Key 手工验证登录、元数据查询、流式回复和 SQL 应用流程。
 
-- [ ] 无令牌请求 `GET /api/v1/auth/captcha` 返回 HTTP 200 和 JSON。
-- [ ] 无令牌请求 `POST /api/v1/sql/execute` 返回 HTTP 401。
-- [ ] 无令牌请求 `GET /api/v1/metadata/datasources` 返回 HTTP 401。
-- [ ] 使用有效账号和验证码请求 `POST /api/v1/auth/login`，业务码为 200，且日志不含密码或密码哈希。
-- [ ] 使用有效令牌请求 `POST /api/v1/sql/execute` 执行 `SELECT 1`，业务码为 200。
-- [ ] 使用有效令牌提交修改型或堆叠 SQL，返回业务错误且语句未执行。
-- [ ] 通过 Nginx 同一域名访问前端和 `/api`，响应不依赖 `Access-Control-Allow-Origin`。
-- [ ] 秘密扫描未发现受跟踪的数据库密码、认证密码日志或密码哈希日志。
+## 部署说明
 
-生产环境必须通过 Nginx 同域代理访问 API，不支持浏览器跨域直连 Spring Boot。当前 MySQL 和 PostgreSQL 本地凭证属于测试账号，不作为轮换阻断项；生产部署必须使用与测试环境隔离的最小权限账号。执行用户 SQL 的数据库账号必须只读，不得使用数据库所有者或管理员账号。
+生产环境建议通过同一域名提供前端页面和 `/api`：
 
-## License
+1. 执行 `npm run build` 生成 `frontend/dist`。
+2. 以 `deploy/nginx.conf.example` 为模板部署静态资源。
+3. 由 Nginx 将 `/api` 反向代理到 Spring Boot。
+4. 保持后端监听回环地址或受保护的内网地址，不要将 8080 端口直接暴露到公网。
+5. 使用独立的最小权限数据库账号和密钥管理服务，不复用本地开发凭证。
 
-MIT
+浏览器始终访问相对路径 `/api/v1/...`，因此同域部署不依赖 CORS 响应头。
+
+## Windows 停止与重启
+
+正常停止服务时，在对应终端按 `Ctrl+C`。重新启动前可检查端口：
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 5173,8080 -ErrorAction SilentlyContinue |
+  Select-Object LocalAddress, LocalPort, OwningProcess
+```
+
+如果端口仍被占用，先通过 `Get-Process -Id <PID>` 确认进程归属，再决定是否停止；不要仅根据进程名称批量强制结束 Java 或 Node.js 进程。
+
+确认端口释放后，分别按照“启动后端”和“启动前端”章节重新启动。
